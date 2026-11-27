@@ -8,16 +8,19 @@ import AssessmentResultView from '@/views/student/AssessmentResultView.vue'
 import AssessmentView from '@/views/student/AssessmentView.vue'
 import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
 import StudentFeedbackView from '@/views/student/StudentFeedbackView.vue'
+import StudentFeedbackDetailView from '@/views/student/StudentFeedbackDetailView.vue'
 import StudentHomeView from '@/views/student/StudentHomeView.vue'
 import StudentResultView from '@/views/student/StudentResultView.vue'
 import SupportChatView from '@/views/student/SupportChatView.vue'
 import { useSessionStore } from '@/stores/session'
+import type { StudentSchoolFeedback } from '@/services/school-feedback'
 
 const api = vi.hoisted(() => ({
   getAssessmentResult: vi.fn(),
   listAssessments: vi.fn(),
   listAssessmentEntries: undefined as undefined | ReturnType<typeof vi.fn>,
   listReports: vi.fn(),
+  listStudentSchoolTasks: vi.fn(),
   startAssessment: vi.fn(),
   submitAssessmentResponse: vi.fn(),
   completeAssessment: vi.fn(),
@@ -30,8 +33,10 @@ const conversations = vi.hoisted(() => ({
   detail: vi.fn(),
   send: vi.fn(),
 }))
+const feedback = vi.hoisted(() => ({ listStudent: vi.fn(), getStudent: vi.fn() }))
 
 vi.mock('@/services/mock-api', () => ({ frontendApi: api }))
+vi.mock('@/services/school-feedback', () => ({ schoolFeedback: feedback }))
 vi.mock('@/services/independent-conversations', () => ({
   independentConversations: conversations,
   researchConversations: conversations,
@@ -62,6 +67,20 @@ const report: ReportSummary = {
   safety_action: 'CRISIS_ROUTE',
   created_at: '2026-10-07T00:02:00Z',
   citation_count: 0,
+}
+
+const publishedFeedback: StudentSchoolFeedback = {
+  feedback_ref: 'FEED_synthetic_1',
+  assessment_ref: assessment.assessment_id,
+  level: 'L3',
+  synthetic_only: true,
+  content_revision: 1,
+  state_version: 2,
+  status: 'PUBLISHED',
+  title: '已发布的合成反馈',
+  body: '该学生的合成反馈正文',
+  created_at: '2026-10-07T00:02:00Z',
+  published_at: '2026-10-07T00:03:00Z',
 }
 
 const conversationProjection = (conversationId: string) => ({
@@ -137,7 +156,9 @@ const makeRouter = async (path: string) => {
       { path: '/student/reports', component: StudentResultView },
       { path: '/student/reports/:id', component: StudentResultView },
       { path: '/student/feedback', component: StudentFeedbackView },
+      { path: '/student/feedback/:id', name: 'student-feedback-detail', component: StudentFeedbackDetailView },
       { path: '/student/support', component: SupportChatView },
+      { path: '/student/workspace', component: { template: '<div />' } },
     ],
   })
   await router.push(path)
@@ -166,6 +187,9 @@ describe('学生演示闭环页面', () => {
     api.getAssessmentResult.mockResolvedValue(envelope(assessment))
     api.listAssessments.mockResolvedValue(envelope([]))
     api.listReports.mockResolvedValue(envelope({ items: [], next_cursor: null }))
+    api.listStudentSchoolTasks.mockResolvedValue(envelope([]))
+    feedback.listStudent.mockResolvedValue({ items: [], total: 0 })
+    feedback.getStudent.mockResolvedValue(publishedFeedback)
     api.startAssessment.mockResolvedValue(envelope(assessmentState({ current_index: 0, answered_count: 0, question: { ...question, item_id: 'ITEM_demo_001' } })))
     api.submitAssessmentResponse.mockResolvedValue(envelope(assessmentState({ can_complete: true, answered_count: 2, question: { ...question, item_id: 'ITEM_demo_003' } })))
     api.completeAssessment.mockResolvedValue(envelope(assessment))
@@ -238,36 +262,24 @@ describe('学生演示闭环页面', () => {
     view.unmount()
   })
 
-  it('首页根据登录名称问候，并展示不可点击的四卡片功能介绍', async () => {
-    api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
-    api.listReports.mockResolvedValue(envelope({ items: [report], next_cursor: null }))
+  it('首页显示登录问候、四个功能入口和按学校任务优先的测评入口', async () => {
     const router = await makeRouter('/student/home')
     const pinia = createPinia()
     useSessionStore(pinia).signIn({ userId: 'student_01', role: 'student', subjectId: 'SYNTHETIC_STUDENT_DEMO', displayName: 'Jack', initials: 'J' })
     const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Welcome back Jack')
-    expect(wrapper.get('.student-feature__title').text()).toBe('Build a better understanding of yourself with AI.')
+    expect(wrapper.get('#student-home-title').text()).toBe('欢迎回来，Jack')
     expect(wrapper.findAll('.student-feature-card')).toHaveLength(4)
+    expect(wrapper.findAll('.student-feature-card__link').map((link) => link.attributes('href'))).toEqual([
+      '/student/assessments', '/student/feedback', '/student/workspace?chat=1', '/student/history',
+    ])
     expect(wrapper.findAll('.student-carousel__dots button')).toHaveLength(5)
-    expect(wrapper.text()).toContain('从一次测评开始')
-    expect(wrapper.text()).not.toContain('了解当前支持功能')
-    expect(wrapper.text()).not.toContain('关于演示数据')
-    expect(wrapper.find('.student-feature-card button').exists()).toBe(false)
-    expect(wrapper.find('.student-feature-card a').exists()).toBe(false)
-    await wrapper.get('.student-feature__action').trigger('click')
+    expect(wrapper.get('.student-feature__action[href="/student/workspace"]').text()).toBe('打开智能体')
+    await wrapper.get('.student-feature__action[href="/student/assessment?startAssigned=1"]').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/student/assessments')
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessment?startAssigned=1')
     wrapper.unmount()
-
-    const historyRouter = await makeRouter('/student/history')
-    const history = mount(StudentHomeView, { global: { plugins: [historyRouter, createPinia()] } })
-    await flushPromises()
-    expect(history.text()).toContain('测评与支持记录')
-    expect(history.text()).toContain('安全流程记录')
-    expect(history.find('.history-section:last-child .app-button').exists()).toBe(false)
-    expect(historyRouter.currentRoute.value.fullPath).toBe('/student/history')
   })
 
   it.each(['SYNTHETIC_STUDENT_DEMO', 'USER_demo_student'])('技术账号标识 %s 不进入首页问候', async (identifier) => {
@@ -281,7 +293,7 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
 
     const welcomeTitle = wrapper.get('#student-home-title')
-    expect(welcomeTitle.text()).toBe('Welcome back 同学')
+    expect(welcomeTitle.text()).toBe('欢迎回来，同学')
     expect(wrapper.text()).not.toContain(identifier)
     wrapper.unmount()
   })
@@ -298,7 +310,7 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
 
     const welcomeTitle = wrapper.get('#student-home-title')
-    expect(welcomeTitle.text()).toBe(`Welcome back ${longDisplayName}`)
+    expect(welcomeTitle.text()).toBe(`欢迎回来，${longDisplayName}`)
     expect(welcomeTitle.classes()).toContain('student-carousel__welcome-title')
     wrapper.unmount()
   })
@@ -321,22 +333,26 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
     expect(api.listAssessmentEntries).not.toHaveBeenCalled()
     expect(api.listAssessments).not.toHaveBeenCalled()
+    expect(api.listReports).not.toHaveBeenCalled()
+    expect(feedback.listStudent).not.toHaveBeenCalled()
     home.unmount()
 
     const historyRouter = await makeRouter('/student/history')
     const history = mount(StudentHomeView, { global: { plugins: [historyRouter, createPinia()] } })
-    await flushPromises()
-    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0 })
+    await vi.waitFor(() => expect(history.findAll('.assessment-card')).toHaveLength(2))
+    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0, status: undefined })
     expect(api.listAssessments).not.toHaveBeenCalled()
-    const rows = history.findAll('.history-row')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]!.text()).toContain('待开始')
-    expect(rows[0]!.text()).toContain('0 项已记录')
-    expect(rows[0]!.text()).toContain('尚未开始')
-    expect(rows[0]!.text()).not.toContain('进行中')
-    expect(rows[1]!.text()).toContain('进行中')
-    expect(rows[1]!.text()).toContain('2 项已记录')
-    expect(rows[1]!.text()).toContain('2026年10月')
+    expect(api.listReports).not.toHaveBeenCalled()
+    expect(feedback.listStudent).not.toHaveBeenCalled()
+    const created = history.get('.assessment-card:has(.assessment-card__status--created)')
+    const inProgress = history.get('.assessment-card:has(.assessment-card__status--in_progress)')
+    expect(created.text()).toContain('待开始')
+    expect(created.text()).toContain('0 项已记录')
+    expect(created.text()).toContain('尚未开始')
+    expect(inProgress.text()).toContain('进行中')
+    expect(inProgress.text()).toContain('2 项已记录')
+    expect(inProgress.text()).toContain('2026年10月7日')
+    expect(history.text()).not.toContain('ASSESS_PROGRESS_METADATA')
     history.unmount()
   })
 
@@ -357,62 +373,57 @@ describe('学生演示闭环页面', () => {
     api.listAssessmentEntries = vi.fn().mockImplementation(({ skip }: { skip: number }) => {
       if (skip === 0) return Promise.resolve(envelope(firstPage))
       pageCalls += 1
-      if (pageCalls === 1) return Promise.reject(new Error('synthetic metadata page outage'))
+      if (pageCalls === 1) return Promise.reject(new Error(''))
       return Promise.resolve(envelope(finalPage))
     })
     const router = await makeRouter('/student/history')
     const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    await vi.waitFor(() => expect(wrapper.findAll('.assessment-card')).toHaveLength(6))
+    expect(wrapper.get('.assessment-library__count').text()).toBe('已加载 30 条')
+    const more = () => wrapper.get('.assessment-load-more button').trigger('click')
+    for (let page = 1; page <= 4; page += 1) await more()
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(30)
+    expect(api.listAssessmentEntries).toHaveBeenCalledTimes(1)
+    await more()
     await flushPromises()
-    expect(wrapper.findAll('.history-row')).toHaveLength(30)
-    expect(wrapper.text()).toContain('已显示 30 条')
-    await wrapper.get('.history-load-more .app-button').trigger('click')
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(30)
+    expect(wrapper.get('[role="alert"]').text()).toContain('暂时无法加载更多测评')
+    await more()
     await flushPromises()
-    expect(wrapper.findAll('.history-row')).toHaveLength(30)
-    expect(wrapper.get('[role="alert"]').text()).toContain('暂时无法加载更多测评记录')
-    expect(wrapper.get('[role="alert"]').text()).not.toContain('synthetic metadata page outage')
-    await wrapper.get('.history-load-more .app-button').trigger('click')
-    await flushPromises()
-    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(2, { limit: 30, skip: 30 })
-    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(3, { limit: 30, skip: 30 })
-    expect(wrapper.findAll('.history-row')).toHaveLength(31)
-    expect(wrapper.findAll('.history-row').filter((row) => row.text().includes('尚未开始的合成测评'))).toHaveLength(1)
-    expect(wrapper.text()).toContain('待开始')
+    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(2, { limit: 30, skip: 30, status: undefined })
+    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(3, { limit: 30, skip: 30, status: undefined })
+    expect(wrapper.findAll('.assessment-card')).toHaveLength(31)
+    expect(wrapper.get('.assessment-card:has(.assessment-card__status--created)').text()).toContain('待开始')
+    expect(wrapper.find('.assessment-load-more').exists()).toBe(false)
     expect(api.listAssessments).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 
-  it('反馈只取completed metadata并支持更多页，metadata失败不回退旧测评接口', async () => {
-    const firstPage = Array.from({ length: 30 }, (_, index) => ({
-      assessment_id: `ASSESS_FEEDBACK_${index}`, status: 'completed' as const,
-      items_answered: 4, started_at: null, completed_at: '2026-10-07T00:01:00Z',
-    }))
-    api.listAssessmentEntries = vi.fn()
-      .mockResolvedValueOnce(envelope(firstPage))
-      .mockResolvedValueOnce(envelope([{
-        assessment_id: 'ASSESS_FEEDBACK_30', status: 'completed', items_answered: 3,
-        started_at: null, completed_at: null,
-      }]))
-    const router = await makeRouter('/student/feedback')
-    const wrapper = mount(StudentFeedbackView, { global: { plugins: [router, createPinia()] } })
+  it('我的记录只在选择反馈标签后加载反馈，正文通过所选记录的详情页读取', async () => {
+    feedback.listStudent.mockResolvedValue({ items: [publishedFeedback], total: 1 })
+    const router = await makeRouter('/student/history')
+    const pinia = createPinia()
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
+    expect(feedback.listStudent).not.toHaveBeenCalled()
+    const tab = wrapper.findAll('nav[aria-label="记录类别"] button').find((button) => button.text() === '测评反馈')!
+    await tab.trigger('click')
     await flushPromises()
-    expect(api.listAssessmentEntries).toHaveBeenCalledWith({ limit: 30, skip: 0, status: 'completed' })
-    expect(wrapper.findAll('.feedback-section--completed .feedback-row')).toHaveLength(30)
-    await wrapper.get('.assessment-load-more .app-button').trigger('click')
+    expect(feedback.listStudent).toHaveBeenCalledExactlyOnceWith(0, 50)
+    expect(feedback.getStudent).not.toHaveBeenCalled()
+    expect(api.listReports).not.toHaveBeenCalled()
+    const card = wrapper.get('.history-library__card')
+    expect(card.text()).toContain(publishedFeedback.title)
+    expect(wrapper.text()).not.toContain(publishedFeedback.body)
+    await card.get('button').trigger('click')
     await flushPromises()
-    expect(api.listAssessmentEntries).toHaveBeenNthCalledWith(2, { limit: 30, skip: 30, status: 'completed' })
-    expect(wrapper.findAll('.feedback-section--completed .feedback-row')).toHaveLength(31)
-    expect(api.listAssessments).not.toHaveBeenCalled()
+    expect(router.currentRoute.value.fullPath).toBe(`/student/feedback/${publishedFeedback.feedback_ref}`)
     wrapper.unmount()
 
-    api.listAssessmentEntries = vi.fn().mockRejectedValue(new Error('synthetic metadata outage'))
-    const failedRouter = await makeRouter('/student/feedback')
-    const failed = mount(StudentFeedbackView, { global: { plugins: [failedRouter, createPinia()] } })
+    const detail = mount(StudentFeedbackDetailView, { global: { plugins: [router, pinia] } })
     await flushPromises()
-    expect(api.listAssessmentEntries).toHaveBeenCalledTimes(1)
-    expect(api.listAssessments).not.toHaveBeenCalled()
-    expect(failed.text()).toContain('测评反馈暂时无法加载')
-    expect(failed.findAll('.feedback-section--completed .feedback-row')).toHaveLength(0)
-    failed.unmount()
+    expect(feedback.getStudent).toHaveBeenCalledExactlyOnceWith(publishedFeedback.feedback_ref)
+    expect(detail.text()).toContain(publishedFeedback.body)
+    detail.unmount()
   })
 
   it('我的测评以真实会话生成三列网格和列表视图，并保留继续与结果入口', async () => {
@@ -436,7 +447,8 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--grid')
     await wrapper.get('[aria-label="列表显示"]').trigger('click')
     expect(wrapper.get('.assessment-cards').classes()).toContain('assessment-cards--list')
-    await wrapper.get('[role="group"][aria-label="按状态筛选测评"] button:nth-child(3)').trigger('click')
+    const filters = wrapper.get('[role="group"][aria-label="按状态筛选测评"]')
+    await filters.findAll('button').find((button) => button.text() === '进行中')!.trigger('click')
     await flushPromises()
     expect(wrapper.findAll('.assessment-card')).toHaveLength(1)
     await wrapper.get('.assessment-card .app-button').trigger('click')
@@ -488,20 +500,27 @@ describe('学生演示闭环页面', () => {
     const router = await makeRouter('/student/assessments')
     const wrapper = mount(StudentAssessmentsView, { global: { plugins: [router, createPinia()] } })
     await flushPromises()
-    await wrapper.get('.assessment-hero .app-button').trigger('click')
+    await wrapper.get('.student-page-hero .app-button').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/student/assessment')
+    expect(router.currentRoute.value.fullPath).toBe('/student/assessment?startAssigned=1')
+    wrapper.unmount()
   })
 
   it('历史页面为进行中和已完成记录提供真实的继续或结果导航', async () => {
-    api.listAssessments.mockResolvedValue(envelope([{ ...assessment, status: 'in_progress' }]))
+    const inProgress = { ...assessment, assessment_id: 'ASSESS_IN_PROGRESS', status: 'in_progress' } as const
+    api.listAssessments.mockResolvedValue(envelope([inProgress, assessment]))
     const router = await makeRouter('/student/history')
     const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    await vi.waitFor(() => expect(wrapper.findAll('.assessment-card')).toHaveLength(2))
+    await wrapper.get('.assessment-card:has(.assessment-card__status--in_progress) button').trigger('click')
     await flushPromises()
-
-    await wrapper.get('.history-row .app-button').trigger('click')
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${inProgress.assessment_id}`)
+    await router.push('/student/history')
+    await vi.waitFor(() => expect(wrapper.findAll('.assessment-card')).toHaveLength(2))
+    await wrapper.get('.assessment-card:has(.assessment-card__status--completed) button').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}`)
+    expect(router.currentRoute.value.fullPath).toBe(`/student/assessment/${assessment.assessment_id}/result`)
+    wrapper.unmount()
   })
 
   it('继续已保存测评，保存回答后同时提供继续和完成选项', async () => {
@@ -656,13 +675,14 @@ describe('学生演示闭环页面', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('SYNTHETIC')
-    expect(wrapper.text()).toContain('非诊断')
+    expect(wrapper.text()).toContain('不构成心理诊断或治疗建议')
     expect(wrapper.text()).toContain('已记录 4 项回答')
     expect(wrapper.text()).not.toContain('theta')
     expect(wrapper.text()).toContain('CLAIM_BOUNDARY')
-    await wrapper.get('.assessment-result__actions .app-button').trigger('click')
+    await wrapper.get('a[href="/student/history"]').trigger('click')
     await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe('/student/support')
+    expect(router.currentRoute.value.fullPath).toBe('/student/history')
+    wrapper.unmount()
   })
 
   it('教育支持可独立新建会话并保留教育用途与隐私边界', async () => {
@@ -671,9 +691,8 @@ describe('学生演示闭环页面', () => {
     const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('这是一般教育支持')
-    expect(wrapper.text()).toContain('对话不会读取测评答案')
-    expect(wrapper.find('textarea').exists()).toBe(false)
+    expect(wrapper.text()).toContain('教育支持不提供诊断或治疗建议，请勿填写姓名、学号等身份信息')
+    expect(wrapper.find('textarea').exists()).toBe(true)
     await wrapper.get('button[aria-label="新建会话"]').trigger('click')
     await flushPromises()
     expect(conversations.create).toHaveBeenCalledWith('synthetic-independent-key')
@@ -694,11 +713,9 @@ describe('学生演示闭环页面', () => {
     expect(wrapper.text()).toContain('消息已收到，回复仍在处理中')
     expect(wrapper.text()).not.toContain('synthetic network timeout')
     expect(api.createSupport).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('安全流程记录')
-    expect(api.listReports).toHaveBeenCalledWith()
-    await wrapper.get('.support-record-row .app-button').trigger('click')
-    await flushPromises()
-    expect(router.currentRoute.value.fullPath).toBe(`/student/reports/${report.report_id}`)
+    expect(api.listReports).not.toHaveBeenCalled()
+    expect(api.listAssessments).not.toHaveBeenCalled()
+    wrapper.unmount()
   })
 
   it('研究草稿待核对时不误报为安全拦截或显示未发布正文', async () => {
@@ -820,14 +837,50 @@ describe('学生演示闭环页面', () => {
     wrapper.unmount()
   })
 
-  it('测评关联历史失败显示不可用和重试', async () => {
-    api.listReports.mockRejectedValueOnce(new Error('synthetic history unavailable'))
-    const router = await makeRouter(`/student/support?assessment=${assessment.assessment_id}`)
-    const wrapper = mount(SupportChatView, { global: { plugins: [router] } })
+  it('教育支持历史失败可重试，安全流程只显示记录，已发布反馈可以打开', async () => {
+    const generated = { ...report, report_id: 'REPORT_PUBLISHED', status: 'generated', safety_action: 'ALLOW' } as const
+    api.listReports.mockRejectedValueOnce(new Error('AUTH_SESSION_EXPIRED'))
+      .mockResolvedValueOnce(envelope({ items: [report, generated], next_cursor: null }))
+    const router = await makeRouter('/student/history')
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, createPinia()] } })
+    const tab = wrapper.findAll('nav[aria-label="记录类别"] button').find((button) => button.text() === '教育支持')!
+    await tab.trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('既有记录暂时无法加载')
-    expect(wrapper.text()).toContain('synthetic history unavailable')
+    expect(wrapper.text()).toContain('教育支持记录暂时无法加载')
+    expect(wrapper.text()).toContain('请重新登录后再试')
+    await wrapper.findAll('.history-collection button').find((button) => button.text() === '重新加载')!.trigger('click')
+    await flushPromises()
+    expect(api.listReports).toHaveBeenCalledTimes(2)
+    const cards = wrapper.findAll('.history-library__card')
+    const safety = cards.find((card) => card.text().includes('安全流程记录'))!
+    expect(safety.find('button').exists()).toBe(false)
+    await cards.find((card) => card.text().includes('查看反馈'))!.get('button').trigger('click')
+    await flushPromises()
+    expect(router.currentRoute.value.fullPath).toBe('/student/reports/REPORT_PUBLISHED')
     expect(api.createSupport).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('切换学生身份时不会显示上一个身份迟到的支持记录', async () => {
+    const stale = deferred<ApiEnvelope<{ items: ReportSummary[]; next_cursor: null }>>()
+    api.listReports.mockReturnValueOnce(stale.promise)
+    const router = await makeRouter('/student/history')
+    const pinia = createPinia()
+    const session = useSessionStore(pinia)
+    const student = { userId: 'student_01', role: 'student' as const, displayName: 'Jack', initials: 'J' }
+    session.signIn({ ...student, subjectId: 'SYNTHETIC_STUDENT_DEMO' })
+    const wrapper = mount(StudentHomeView, { global: { plugins: [router, pinia] } })
+    const tab = wrapper.findAll('nav[aria-label="记录类别"] button').find((button) => button.text() === '教育支持')!
+    await tab.trigger('click')
+    expect(api.listReports).toHaveBeenCalledTimes(1)
+    session.signIn({ ...student, subjectId: 'SYNTHETIC_STUDENT_OTHER' })
+    await flushPromises()
+    expect(api.listReports).toHaveBeenCalledTimes(2)
+    stale.resolve(envelope({ items: [report], next_cursor: null }))
+    await flushPromises()
+    expect(wrapper.text()).toContain('目前没有教育支持记录')
+    expect(wrapper.text()).not.toContain('安全流程记录')
+    wrapper.unmount()
   })
 })

@@ -297,6 +297,53 @@ test('an urgent synthetic learner message goes through school safety before any 
   await expect(page.getByRole('button', { name: '打开学生支持对话' }).last()).toBeVisible()
 })
 
+test('learner history opens the exact published feedback on demand', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_FEEDBACK !== '1', 'Requires an approved fixture in the synthetic learner account')
+  await signIn(page)
+  const recordRequests: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (path.startsWith('/api/v1/school/feedback/student') || path.endsWith('/reports')) recordRequests.push(path)
+  })
+  await chooseRole(page, 'STUDENT', '/student/home')
+  await expect(page.getByRole('heading', { name: /^欢迎回来/ })).toBeVisible()
+  await page.getByRole('link', { name: /成长记录/ }).click()
+  await expect(page).toHaveURL(origin + '/student/history')
+  const content = page.getByRole('region', { name: '成长记录内容' })
+  await expect(content.getByRole('button', { name: '查看记录', exact: true }).first()).toBeVisible()
+  expect(recordRequests).toEqual([])
+
+  const listPath = '/api/v1/school/feedback/student'
+  const listRead = page.waitForResponse((response) => new URL(response.url()).pathname === listPath)
+  await page.getByRole('navigation', { name: '记录类别', exact: true }).getByRole('button', { name: '测评反馈' }).click()
+  const list = await listRead
+  expect(list.ok()).toBe(true)
+  const current = (await list.json()).data.items[0]
+  expect(current.status).toBe('PUBLISHED')
+  expect(current.body).toBeTruthy()
+  await expect(content.getByText(current.title, { exact: true }).first()).toBeVisible()
+  await expect(content.getByText(readSchoolFeedbackContent(current.body).body, { exact: true })).toHaveCount(0)
+  expect(recordRequests).toEqual([listPath])
+
+  const detailPath = listPath + '/' + current.feedback_ref
+  const detailRead = page.waitForResponse((response) => new URL(response.url()).pathname === detailPath)
+  await content.locator('article').filter({ hasText: current.title }).first().getByRole('button', { name: '查看详情' }).click()
+  const detail = await detailRead
+  expect(detail.ok()).toBe(true)
+  expect(detail.headers()['cache-control']).toBe('no-store')
+  await expect(page).toHaveURL(origin + '/student/feedback/' + current.feedback_ref)
+  await expect(page.getByText(readSchoolFeedbackContent(current.body).body, { exact: true })).toBeVisible()
+  expect(recordRequests).toEqual([listPath, detailPath])
+
+  await page.goto(origin + '/student/history')
+  await expect(content.getByRole('button', { name: '查看记录', exact: true }).first()).toBeVisible()
+  const reportsPath = '/api/v1/reports'
+  const reportRead = page.waitForResponse((response) => new URL(response.url()).pathname === reportsPath)
+  await page.getByRole('navigation', { name: '记录类别', exact: true }).getByRole('button', { name: '教育支持' }).click()
+  expect((await reportRead).ok()).toBe(true)
+  expect(recordRequests).toEqual([listPath, detailPath, reportsPath])
+})
+
 test('published school feedback is read in the learner conversation over the private route', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_FEEDBACK !== '1', 'Requires an approved fixture in the synthetic learner account')
   test.setTimeout(180_000)

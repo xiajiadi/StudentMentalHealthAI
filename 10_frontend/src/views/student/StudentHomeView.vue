@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RotateCcw } from '@lucide/vue'
-import AppButton from '@/components/app/AppButton.vue'
-import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
-import StudentRefreshButton from '@/components/app/StudentRefreshButton.vue'
 import StudentPageHero from '@/components/student/StudentPageHero.vue'
 import StudentHistoryLibrary from '@/components/student/StudentHistoryLibrary.vue'
 import StudentAssessmentsView from '@/views/student/StudentAssessmentsView.vue'
@@ -20,10 +16,9 @@ import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const state = ref<'loading' | 'ready' | 'error'>('loading')
 const reports = ref<ReportSummary[]>([])
 const historyCategory = ref<'assessment' | 'feedback' | 'support' | 'conversations'>('assessment')
-const errorMessage = ref('')
+const historyLoading = ref(false)
 const historyError = ref('')
 const historyRequestGeneration = ref(0)
 const feedbackRows = ref<StudentSchoolFeedback[]>([])
@@ -202,27 +197,20 @@ const setCarouselSlide = (index: number) => {
 const previousCarouselSlide = () => setCarouselSlide(carouselIndex.value - 1)
 const nextCarouselSlide = () => setCarouselSlide(carouselIndex.value + 1)
 
-const load = async () => {
+const loadSupportHistory = async () => {
   const generation = ++historyRequestGeneration.value
-  state.value = 'loading'
-  errorMessage.value = ''
+  historyLoading.value = true
+  historyError.value = ''
   try {
-    try {
-      const reportResponse = await frontendApi.listReports()
-      if (generation !== historyRequestGeneration.value) return
-      reports.value = reportResponse.data.items
-      historyError.value = ''
-    } catch (error) {
-      if (generation !== historyRequestGeneration.value) return
-      reports.value = []
-      historyError.value = userFacingApiError(error, '支持记录暂时无法加载。')
-    }
+    const reportResponse = await frontendApi.listReports()
     if (generation !== historyRequestGeneration.value) return
-    state.value = 'ready'
+    reports.value = reportResponse.data.items
   } catch (error) {
     if (generation !== historyRequestGeneration.value) return
-    state.value = 'error'
-    errorMessage.value = userFacingApiError(error, '页面暂时无法加载，请稍后重试。')
+    reports.value = []
+    historyError.value = userFacingApiError(error, '支持记录暂时无法加载')
+  } finally {
+    if (generation === historyRequestGeneration.value) historyLoading.value = false
   }
 }
 
@@ -278,7 +266,6 @@ const feedbackHistoryItems = computed<StudentHistoryLibraryItem[]>(() => feedbac
   actionVariant: 'secondary',
 })))
 const feedbackHasMore = computed(() => feedbackRows.value.length < feedbackTotal.value)
-const findFeedback = (feedbackRef: string) => feedbackRows.value.find((feedback) => feedback.feedback_ref === feedbackRef)
 
 const loadStudentFeedback = async (append = false) => {
   if (append && (feedbackLoadingMore.value || !feedbackHasMore.value)) return
@@ -348,30 +335,37 @@ const resumeCarouselAfterFocus = (event: FocusEvent) => {
 const handleVisibilityChange = () => scheduleCarouselRotation()
 const handleMotionPreferenceChange = () => scheduleCarouselRotation()
 
-watch(isHistory, () => {
+const loadHistoryCategory = () => {
+  if (!isHistory.value) return
+  if (historyCategory.value === 'support') void loadSupportHistory()
+  else if (historyCategory.value === 'feedback') void loadStudentFeedback()
+}
+
+watch(isHistory, (showingHistory) => {
   scheduleCarouselRotation()
-  void load()
+  if (showingHistory) loadHistoryCategory()
   scheduleHistoryFloatingNavSync()
 })
 watch(
-  () => [session.user?.role ?? null, session.user?.userId ?? null, session.user?.activeContext?.schoolRef ?? null, session.user?.activeContext ?? null] as const,
+  () => [session.user?.role ?? null, session.user?.userId ?? null, session.user?.subjectId ?? null, session.user?.activeContext?.schoolRef ?? null, session.user?.activeContext ?? null] as const,
   (next, previous) => {
     if (!previous || next.every((value, index) => value === previous[index])) return
+    historyRequestGeneration.value += 1
+    reports.value = []
+    historyLoading.value = false
+    historyError.value = ''
     feedbackRequestGeneration.value += 1
     feedbackRows.value = []
     feedbackTotal.value = 0
     feedbackError.value = ''
     feedbackLoadMoreError.value = ''
     feedbackLoadingMore.value = false
-    if (next[0] === 'student' && isHistory.value && historyCategory.value === 'feedback') void loadStudentFeedback()
-    else feedbackState.value = 'ready'
+    feedbackState.value = 'ready'
+    if (next[0] === 'student') loadHistoryCategory()
   },
 )
-watch(historyCategory, (category) => {
-  if (!isHistory.value) return
-  if (category === 'support') void load()
-  else if (category === 'feedback') void loadStudentFeedback()
-})
+
+watch(historyCategory, loadHistoryCategory)
 onMounted(() => {
   carouselMounted.value = true
   window.addEventListener('scroll', scheduleHistoryFloatingNavSync, { passive: true })
@@ -381,7 +375,7 @@ onMounted(() => {
   document.addEventListener('visibilitychange', handleVisibilityChange)
   scheduleCarouselRotation()
   scheduleHistoryFloatingNavSync()
-  load()
+  loadHistoryCategory()
 })
 onUnmounted(() => {
   carouselMounted.value = false
@@ -398,13 +392,7 @@ onUnmounted(() => {
 
 <template>
   <div class="content-wrap content-wrap--student student-space">
-    <div v-if="state === 'loading' && !isHistory" class="student-loading" aria-busy="true" aria-label="正在加载学生空间">
-      <div class="skeleton skeleton--short"></div><div class="skeleton skeleton--title"></div><div class="skeleton skeleton--body"></div>
-    </div>
-    <AppStatusCallout v-else-if="state === 'error' && !isHistory" tone="critical" title="学生空间暂时无法加载" :body="errorMessage">
-      <AppButton variant="secondary" size="sm" @click="load"><RotateCcw :size="15" aria-hidden="true" />重新加载</AppButton>
-    </AppStatusCallout>
-    <template v-else-if="!isHistory">
+    <template v-if="!isHistory">
       <section
         class="student-carousel"
         role="region"
@@ -519,50 +507,40 @@ onUnmounted(() => {
       </Transition>
 
       <section class="history-collection" aria-label="成长记录内容">
-        <AppStatusCallout v-if="state === 'error'" tone="critical" title="成长记录暂时无法加载" :body="errorMessage">
-          <StudentRefreshButton :loading="state === 'loading'" label="重新加载" @click="load" />
-        </AppStatusCallout>
-        <Transition v-else name="history-panel" mode="out-in">
-        <StudentAssessmentsView v-if="historyCategory === 'assessment'" embedded />
+        <Transition name="history-panel" mode="out-in">
+          <StudentAssessmentsView v-if="historyCategory === 'assessment'" embedded />
 
-        <StudentHistoryLibrary
-          v-else-if="historyCategory === 'feedback'"
-          :items="feedbackHistoryItems"
-          :loading="feedbackState === 'loading'"
-          :error="feedbackError"
-          error-title="测评反馈暂时无法加载"
-          empty-title="目前没有已发布的测评反馈"
-          empty-description="只有学校审核发布给当前账号的反馈会显示在这里。"
-          empty-icon="feedback"
-          :has-more="feedbackHasMore"
-          :loading-more="feedbackLoadingMore"
-          :load-more-error="feedbackLoadMoreError"
-          @retry="loadStudentFeedback()"
-          @load-more="loadStudentFeedback(true)"
-          @activate="activateFeedbackRecord"
-        >
-          <template #details="{ item }">
-            <details v-if="findFeedback(item.ref)" class="history-feedback-details">
-              <summary>查看反馈正文</summary>
-              <p>{{ findFeedback(item.ref)?.body }}</p>
-            </details>
-          </template>
-        </StudentHistoryLibrary>
+          <StudentHistoryLibrary
+            v-else-if="historyCategory === 'feedback'"
+            :items="feedbackHistoryItems"
+            :loading="feedbackState === 'loading'"
+            :error="feedbackError"
+            error-title="测评反馈暂时无法加载"
+            empty-title="目前没有已发布的测评反馈"
+            empty-description="只有学校审核发布给当前账号的反馈会显示在这里。"
+            empty-icon="feedback"
+            :has-more="feedbackHasMore"
+            :loading-more="feedbackLoadingMore"
+            :load-more-error="feedbackLoadMoreError"
+            @retry="loadStudentFeedback()"
+            @load-more="loadStudentFeedback(true)"
+            @activate="activateFeedbackRecord"
+          />
 
-        <StudentConversationHistory v-else-if="historyCategory === 'conversations'" />
+          <StudentConversationHistory v-else-if="historyCategory === 'conversations'" />
 
-        <StudentHistoryLibrary
-          v-else
-          :items="supportHistoryItems"
-          :loading="state === 'loading'"
-          :error="historyError"
-          error-title="教育支持记录暂时无法加载"
-          empty-title="目前没有教育支持记录"
-          empty-description="服务端已保存且当前账号可查看的记录会显示在这里。"
-          empty-icon="support"
-          @retry="load"
-          @activate="activateSupportRecord"
-        />
+          <StudentHistoryLibrary
+            v-else
+            :items="supportHistoryItems"
+            :loading="historyLoading"
+            :error="historyError"
+            error-title="教育支持记录暂时无法加载"
+            empty-title="目前没有教育支持记录"
+            empty-description="服务端已保存且当前账号可查看的记录会显示在这里。"
+            empty-icon="support"
+            @retry="loadSupportHistory"
+            @activate="activateSupportRecord"
+          />
         </Transition>
       </section>
     </template>
@@ -610,9 +588,6 @@ onUnmounted(() => {
 .history-tabs button:hover { color: #1e1d29; background: #f4f6f8; }
 .history-tabs button[aria-pressed="true"] { color: #00a9dd; background: #e8f7fb; }
 .history-tabs button:focus-visible { outline: 2px solid #279de0; outline-offset: 2px; }
-:deep(.history-feedback-details) { padding-top: 8px; border-top: 1px solid var(--color-border); }
-:deep(.history-feedback-details summary) { color: var(--color-primary); font-size: 11px; font-weight: 600; cursor: pointer; }
-:deep(.history-feedback-details p) { margin: 8px 0 0; color: var(--color-text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .history-panel-enter-active, .history-panel-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
 .history-panel-enter-from { opacity: 0; transform: translateY(4px); }
 .history-panel-leave-to { opacity: 0; transform: translateY(-3px); }
@@ -633,7 +608,6 @@ onUnmounted(() => {
 .student-feature__action { display: flex; width: fit-content; min-height: 40px; align-items: center; justify-content: center; padding: 9px 15px; border: 1px solid #41434b; border-radius: 8px; color: #1e1d29; background: #fff; font-family: var(--font-sans); font-size: 14px; font-weight: 600; line-height: 1.4; text-decoration: none; transition: background-color var(--motion-fast), color var(--motion-fast); }
 .student-feature__action:hover { color: #1e1d29; background: rgb(0 0 0 / 5%); }
 .student-feature__action:focus-visible { outline: 2px solid #249de0; outline-offset: 3px; }
-.student-loading { padding-top: 18px; }
 .skeleton { position: relative; overflow: hidden; border-radius: 7px; background: var(--color-surface-skeleton); }
 .skeleton::after { position: absolute; inset: 0; content: ""; background: linear-gradient(100deg, transparent, rgb(255 255 255 / 62%), transparent); transform: translateX(-100%); animation: student-skeleton-shimmer 1.35s ease-in-out infinite; }
 .skeleton--short { width: 120px; height: 13px; }
