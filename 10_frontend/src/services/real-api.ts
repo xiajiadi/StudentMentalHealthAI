@@ -1495,6 +1495,7 @@ export class RealApiProvider implements FrontendApi {
         || new RegExp(`^${cases}(?:/(?:assignees|plan-evidence))?$`).test(input.path)
       : input.method === 'POST'
         && (input.path === `${base}/cases`
+          || new RegExp(`^${base}/feedback-questions/FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$`).test(input.path)
           || new RegExp(`^(?:${cases}/(?:transitions|actions)|${actions}/feedback)$`).test(input.path))
     if (!allowed) throw new RealApiError('API_INVALID_REQUEST', '学校支持请求地址无效。')
     if (input.method === 'POST') {

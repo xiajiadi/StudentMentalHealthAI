@@ -37,6 +37,7 @@ type Row = Record<string, unknown>
 const invalid = () => new RealApiError('API_INVALID_RESPONSE', '学校支持服务返回了无法识别的数据。')
 const casePattern = /^SSC_(?:[a-f0-9]{32}|DEMO_[0-9]{3})$/
 const actionPattern = /^SSA_(?:[a-f0-9]{32}|DEMO_[0-9]{2}_[0-9]{2})$/
+const feedbackPattern = /^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$/
 
 export function supportError(error: unknown): string {
   const code = error instanceof RealApiError ? error.code.toLowerCase() : ''
@@ -184,6 +185,14 @@ export const schoolSupport = {
     }, key), caseFields)
     const receipt = summary(response)
     if (receipt.category !== category || response.source !== (student ? 'TEACHER_REFERRAL' : 'STUDENT_REQUEST')) throw invalid()
+    return receipt
+  },
+  async askAboutFeedback(feedbackRef: string, revision: number, question: string, key: string) {
+    const row = record(await write(`/feedback-questions/${reference(feedbackRef, feedbackPattern)}`, {
+      content_revision: version(revision), question,
+    }, key), caseFields)
+    const receipt = summary(row)
+    if (row.source !== 'STUDENT_REQUEST' || receipt.category !== 'OTHER') throw invalid()
     return receipt
   },
   async transition(current: SupportCase, status: Extract<CaseStatus, 'TRIAGED' | 'PLANNED' | 'REVIEW' | 'CLOSED'>, key: string, plan?: string) {

@@ -46,6 +46,18 @@ class SupportCaseCreateRequest(SupportModel):
         return value
 
 
+class SupportFeedbackQuestionRequest(SupportModel):
+    content_revision: StrictInt = Field(ge=1, le=2_147_483_647)
+    question: StrictStr = Field(min_length=1, max_length=800)
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("feedback question must not be blank")
+        return value.strip()
+
+
 class SupportTransitionRequest(SupportModel):
     expected_version: StrictInt = Field(ge=1, le=2_147_483_647)
     target_status: Literal["TRIAGED", "PLANNED", "REVIEW", "CLOSED"]

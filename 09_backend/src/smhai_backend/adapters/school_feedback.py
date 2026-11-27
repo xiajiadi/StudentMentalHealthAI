@@ -257,11 +257,16 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             raise error(ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="feedback is unavailable")
         return content
 
-    def _projection(self, row, case, assessment, *, student=False):
-        if student and (
+    @staticmethod
+    def _require_published(row):
+        if (
             row.status != "PUBLISHED" or row.published_at is None or row.revoked_at is not None
         ):
             raise _missing()
+
+    def _projection(self, row, case, assessment, *, student=False):
+        if student:
+            self._require_published(row)
         content = self._content(row)
         result = {
             "feedback_ref": row.feedback_ref,
@@ -622,13 +627,46 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             raise _missing()
         return candidate
 
-    async def _student_read(self, uow, actor, account_id, feedback_ref, now):
+    async def _student_feedback_scope(self, uow, actor, account_id, feedback_ref, now):
         candidate = await self._case_for_feedback(uow, actor, feedback_ref)
         case, assessment = await self._scope(
             uow, actor, candidate, now, student_account_id=account_id
         )
         row = await self._feedback(uow, actor, feedback_ref, case=case)
+        return row, case, assessment
+
+    async def _student_read(self, uow, actor, account_id, feedback_ref, now):
+        row, case, assessment = await self._student_feedback_scope(
+            uow, actor, account_id, feedback_ref, now
+        )
         return self._projection(row, case, assessment, student=True)
+
+    async def student_feedback_support_scope(
+        self, uow, actor, account_id, feedback_ref, revision, now
+    ) -> tuple[int, int, int]:
+        """Resolve the current authorized class from a published revision without decrypting it."""
+        row, case, _assessment = await self._student_feedback_scope(
+            uow, actor, account_id, feedback_ref, now
+        )
+        self._require_published(row)
+        if (
+            row.synthetic_only is not True
+            or row.level != "L3"
+            or case.status != "APPROVED"
+            or row.case_version != case.version
+        ):
+            raise _missing()
+        if row.content_revision != revision:
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="feedback revision changed")
+        enrollment = self._db_models.TaskEnrollment
+        class_student_id = await uow.session.scalar(
+            self._select(enrollment.class_student_id)
+            .where(enrollment.id == case.task_enrollment_id)
+            .with_for_update()
+        )
+        if class_student_id is None:
+            raise _missing()
+        return case.subject_id, case.class_id, class_student_id
 
     async def latest_assigned_published_feedback(
         self, uow, actor, support_case, account_id, role_id, now

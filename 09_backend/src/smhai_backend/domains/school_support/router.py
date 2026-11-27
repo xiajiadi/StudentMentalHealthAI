@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Path, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -26,6 +26,7 @@ from .schemas import (
     SupportCaseDetailDto,
     SupportCasePageDto,
     SupportCaseReceiptDto,
+    SupportFeedbackQuestionRequest,
     SupportPlanEvidenceDto,
     SupportStudentListDto,
     SupportTransitionRequest,
@@ -157,6 +158,37 @@ async def create_case(
         SupportCaseReceiptDto,
         201,
     )
+
+
+@router.post(
+    "/feedback-questions/{feedback_ref}",
+    status_code=201,
+    response_model=ApiEnvelope[SupportCaseReceiptDto],
+    openapi_extra=CSRF_SECURITY_OPENAPI_EXTRA,
+    responses=_ERRORS,
+    include_in_schema=False,
+)
+async def ask_about_feedback(
+    request: Request,
+    payload: SupportFeedbackQuestionRequest,
+    actor: CsrfActor,
+    feedback_ref: str = Path(pattern=r"^FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}$"),
+):
+    service = _service(request)
+    body = payload.model_dump(mode="json")
+    response = await _write(
+        request,
+        actor,
+        "school-support-case:ask-about-feedback",
+        {**body, "feedback_ref": feedback_ref},
+        lambda idem, trace: service.ask_about_feedback(
+            actor, feedback_ref, payload=body, idempotency=idem, trace_id=trace
+        ),
+        SupportCaseReceiptDto,
+        201,
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
 
 
 @router.get(

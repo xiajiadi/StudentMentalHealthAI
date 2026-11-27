@@ -4,6 +4,7 @@ import { RotateCcw } from '@lucide/vue'
 import AppButton from '@/components/app/AppButton.vue'
 import AppCard from '@/components/app/AppCard.vue'
 import AppStatusCallout from '@/components/app/AppStatusCallout.vue'
+import FeedbackClarification from '@/components/student/FeedbackClarification.vue'
 import StudentRecordDetailLayout from '@/components/student/StudentRecordDetailLayout.vue'
 import WorkspaceBreadcrumb from '@/components/student/WorkspaceBreadcrumb.vue'
 import { studentPageArt } from '@/data/student-feature-cards'
@@ -11,14 +12,17 @@ import { schoolFeedback } from '@/services/school-feedback'
 import { readSchoolFeedbackContent } from '@/services/school-feedback-content'
 import { useSessionStore } from '@/stores/session'
 import { userFacingApiError } from '@/utils/user-facing-errors'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
+const router = useRouter()
 const session = useSessionStore()
 const props = defineProps<{ embeddedFeedbackRef?: string }>()
 const emit = defineEmits<{ support: [] }>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
-const feedback = ref<{ title: string; body: string; published_at: string | null } | null>(null)
+const feedback = ref<{
+  title: string; body: string; published_at: string | null; feedback_ref?: string; content_revision?: number
+} | null>(null)
 const reviewedContent = computed(() => readSchoolFeedbackContent(feedback.value?.body ?? ''))
 const errorMessage = ref('')
 let requestGeneration = 0
@@ -88,6 +92,12 @@ onBeforeUnmount(() => { requestGeneration += 1 })
           <p>{{ reviewedContent.nextSteps }}</p>
         </AppCard>
         <p v-else>这份反馈没有单独列出下一步。如果需要了解建议的含义或适用范围，可以请学校协助说明</p>
+        <FeedbackClarification
+          v-if="feedback.feedback_ref && feedback.content_revision"
+          :key="feedback.feedback_ref"
+          :feedback-ref="feedback.feedback_ref"
+          :revision="feedback.content_revision"
+        />
         <AppButton variant="secondary" @click="emit('support')">查看学校支持</AppButton>
       </details>
     </div>
@@ -107,7 +117,19 @@ onBeforeUnmount(() => { requestGeneration += 1 })
       <section id="feedback-content" class="feedback-detail__section" aria-labelledby="feedback-content-title">
         <div class="feedback-detail__section-heading"><span>FEEDBACK</span><h2 id="feedback-content-title">反馈内容</h2></div>
         <AppStatusCallout v-if="isPreviewRoute()" tone="info" title="本地演示预览" body="此合成内容只用于查看页面样式，不依据个人测评数据，也不是老师审核发布的反馈。" />
-        <AppCard class="feedback-detail__body"><p>{{ feedback.body }}</p></AppCard>
+        <AppCard class="feedback-detail__body"><p>{{ reviewedContent.body }}</p></AppCard>
+        <AppCard v-if="reviewedContent.nextSteps" class="feedback-detail__body">
+          <h3>老师建议的下一步</h3>
+          <p>{{ reviewedContent.nextSteps }}</p>
+        </AppCard>
+        <div v-if="feedback.feedback_ref && feedback.content_revision" class="feedback-detail__section">
+          <FeedbackClarification
+            :key="feedback.feedback_ref"
+            :feedback-ref="feedback.feedback_ref"
+            :revision="feedback.content_revision"
+          />
+          <AppButton variant="secondary" @click="router.push('/student/school-support')">查看学校支持</AppButton>
+        </div>
       </section>
       <section id="feedback-record" class="feedback-detail__section" aria-labelledby="feedback-record-title">
         <div class="feedback-detail__section-heading"><span>RECORD</span><h2 id="feedback-record-title">记录信息</h2></div>

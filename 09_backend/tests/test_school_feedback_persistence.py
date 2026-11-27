@@ -250,3 +250,42 @@ async def test_support_evidence_binds_current_subject_and_only_audits_metadata(
     assert adapter._scope.await_args.kwargs["class_student_id"] == support_case.class_student_id
     query = str(session.scalar.await_args.args[0].compile(dialect=mysql.dialect()))
     assert "JOIN (SELECT DISTINCT" in query
+
+
+@pytest.mark.parametrize(
+    ("current_status", "revision", "expected_code"),
+    [
+        ("PUBLISHED", 1, None),
+        ("PUBLISHED", 2, ErrorCode.WORKFLOW_CONFLICT),
+        ("REVOKED", 1, ErrorCode.RESOURCE_NOT_FOUND),
+    ],
+)
+@pytest.mark.asyncio
+async def test_feedback_question_resolves_published_scope_without_decrypting(
+    current_status, revision, expected_code
+):
+    from database_layer import models
+    from sqlalchemy import select
+
+    adapter, row, case, assessment = fixture_adapter()
+    adapter._db_models = models
+    adapter._directory._persistence._select = select
+    row.status = current_status
+    case.subject_id = row.subject_id
+    case.class_id = row.class_id
+    case.task_enrollment_id = row.task_enrollment_id
+    adapter._student_feedback_scope = AsyncMock(return_value=(row, case, assessment))
+    uow = SimpleNamespace(session=SimpleNamespace(scalar=AsyncMock(return_value=19)))
+    actor = SimpleNamespace(school_id=1)
+    args = (uow, actor, 8, row.feedback_ref, revision, row.created_at)
+    if expected_code:
+        with pytest.raises(BackendError) as raised:
+            await adapter.student_feedback_support_scope(*args)
+        assert raised.value.code is expected_code
+        uow.session.scalar.assert_not_awaited()
+    else:
+        assert await adapter.student_feedback_support_scope(*args) == (6, 4, 19)
+    adapter._student_feedback_scope.assert_awaited_once_with(
+        uow, actor, 8, row.feedback_ref, row.created_at
+    )
+    adapter.protection.decrypt_json.assert_not_called()

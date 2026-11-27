@@ -21,6 +21,7 @@ from .schemas import (
     SupportCasePageDto,
     SupportCaseReceiptDto,
     SupportCaseSummaryDto,
+    SupportFeedbackQuestionRequest,
     SupportPlanEvidenceDto,
     SupportStudentDto,
     SupportStudentListDto,
@@ -210,6 +211,23 @@ class SchoolSupportService:
             class_ref=request.class_ref,
             category_code=request.category_code,
             content=request.content,
+            idempotency=idempotency,
+            trace_id=trace_id,
+        )
+        return self._project(SupportCaseReceiptDto, row)
+
+    async def ask_about_feedback(
+        self, actor: Actor, feedback_ref: str, *, payload: dict, idempotency, trace_id: str
+    ):
+        self._require_school_actor(actor, BackendRole.STUDENT)
+        question = self._request(SupportFeedbackQuestionRequest, payload)
+        row = await self._port().support_create_case(
+            actor,
+            student_ref=None,
+            class_ref=None,
+            category_code="OTHER",
+            content=question.question,
+            feedback_source=(feedback_ref, question.content_revision),
             idempotency=idempotency,
             trace_id=trace_id,
         )

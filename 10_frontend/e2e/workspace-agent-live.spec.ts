@@ -285,6 +285,85 @@ test('published school feedback is read in the learner conversation over the pri
   expect((await page.request.get(origin + taskPath)).status()).toBe(403)
 })
 
+test('a learner asks the school to clarify the exact published feedback revision', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || process.env.PSYNOVA_AGENT_QA_FEEDBACK !== '1', 'Requires a dedicated synthetic school and published feedback')
+  test.setTimeout(200_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  const published = await page.request.get(origin + '/api/v1/school/feedback/student')
+  expect(published.ok()).toBe(true)
+  const feedback = (await published.json()).data.items[0]
+  expect(feedback.status).toBe('PUBLISHED')
+  const endpoint = '/api/v1/school/support/feedback-questions/' + feedback.feedback_ref
+  const csrfHeaders = async (key: string) => {
+    const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
+    return { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token, 'Idempotency-Key': key }
+  }
+  const question = `合成流程核对 ${Date.now()}，请说明我应该如何理解老师写的下一步`
+  const badRevision = await page.request.post(origin + endpoint, {
+    headers: await csrfHeaders(`qa-feedback-version-${Date.now()}`),
+    data: { content_revision: feedback.content_revision + 1, question },
+  })
+  expect(badRevision.status()).toBe(409)
+
+  const events = await ask(page, '请打开最新的已发布测评反馈，我想问学校老师该怎么理解', '发送消息')
+  expect(events.find((event) => event.view?.kind === 'feedback_picker')?.view.feedback_ref).toBe(feedback.feedback_ref)
+  await page.getByRole('button', { name: '在会话中阅读反馈' }).last().click()
+  await page.getByText('怎么读这份反馈', { exact: true }).click()
+  let writes = 0
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && request.url().endsWith(endpoint)) writes += 1
+  })
+  await page.getByRole('button', { name: '请心理教师说明' }).click()
+  const field = page.getByRole('textbox', { name: '你想确认什么' })
+  await field.fill(question)
+  expect(writes).toBe(0)
+  const resultPromise = page.waitForResponse((response) => response.url().endsWith(endpoint))
+  await page.getByRole('button', { name: '提交说明请求' }).click()
+  const result = await resultPromise
+  expect(result.status()).toBe(201)
+  expect(result.headers()['cache-control']).toContain('no-store')
+  expect(writes).toBe(1)
+  const receipt = (await result.json()).data
+  expect(receipt).toMatchObject({ source: 'STUDENT_REQUEST', status: 'SUBMITTED' })
+  const payload = { content_revision: feedback.content_revision, question }
+  expect(result.request().postDataJSON()).toEqual(payload)
+  await expect(page.getByRole('status').filter({ hasText: '已提交说明请求' })).toBeVisible()
+  const requestKey = (await result.request().allHeaders())['idempotency-key']
+  expect(requestKey).toBeTruthy()
+  const replay = await page.request.post(origin + endpoint, { headers: await csrfHeaders(requestKey), data: payload })
+  expect(replay.status()).toBe(201)
+  expect((await replay.json()).data.case_ref).toBe(receipt.case_ref)
+
+  const casePath = '/api/v1/school/support/cases/' + receipt.case_ref
+  const stored = await page.request.get(origin + casePath)
+  expect(stored.status()).toBe(200)
+  const exactQuestion = `请说明测评反馈第 ${feedback.content_revision} 版\n反馈编号 ${feedback.feedback_ref}\n\n${question}`
+  expect((await stored.json()).data.content).toBe(exactQuestion)
+  expect(exactQuestion).not.toContain(feedback.body)
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  const saved = await history.text()
+  expect(saved).not.toContain(question)
+  expect(saved).not.toContain(feedback.body)
+
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  expect((await page.request.get(origin + casePath)).status()).toBe(404)
+  expect((await page.request.post(origin + endpoint, {
+    headers: await csrfHeaders(`qa-feedback-teacher-${Date.now()}`), data: payload,
+  })).status()).toBe(403)
+
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  const available = await page.request.get(origin + casePath)
+  expect(available.ok()).toBe(true)
+  expect((await available.json()).data).toMatchObject({ status: 'SUBMITTED', content: null })
+  const triaged = await page.request.post(origin + casePath + '/transitions', {
+    headers: await csrfHeaders(`qa-feedback-accept-${Date.now()}`),
+    data: { expected_version: receipt.state_version, target_status: 'TRIAGED' },
+  })
+  expect(triaged.ok()).toBe(true)
+  expect((await triaged.json()).data).toMatchObject({ status: 'TRIAGED', content: exactQuestion })
+})
+
 test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

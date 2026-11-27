@@ -831,13 +831,18 @@ class SchoolSupportPersistenceAdapter:
         content: str,
         idempotency,
         trace_id: str,
+        feedback_source: tuple[str, int] | None = None,
     ) -> dict[str, Any]:
         now = self._utc_now()
         async with self._uow() as uow:
             role = actor.role
             role_code = "teacher" if role is BackendRole.TEACHER else "student"
-            account_id, role_id = await self._require_actor(uow, actor, role_code, now)
+            account_id, role_id = await self._require_actor(
+                uow, actor, role_code, now, lock=feedback_source is not None
+            )
             if role is BackendRole.TEACHER:
+                if feedback_source is not None:
+                    raise error(ErrorCode.FORBIDDEN, detail="access denied")
                 if student_ref is None or class_ref is None:
                     raise error(
                         ErrorCode.VALIDATION_FAILED,
@@ -855,6 +860,18 @@ class SchoolSupportPersistenceAdapter:
                 class_id = int(subject[2])
                 class_student_id = int(subject[3])
                 source_type = "TEACHER"
+            elif feedback_source is not None:
+                feedback_ref, revision = feedback_source
+                subject_id, class_id, class_student_id = (
+                    await self._reviews.student_feedback_support_scope(
+                        uow, actor, account_id, feedback_ref, revision, now
+                    )
+                )
+                current_subject_id, _, _ = await self._student_subject(uow, actor, now)
+                if subject_id != current_subject_id:
+                    raise _not_found()
+                source_type = "STUDENT"
+                content = f"请说明测评反馈第 {revision} 版\n反馈编号 {feedback_ref}\n\n{content}"
             else:
                 scope = await self._student_scope(uow, actor, now)
                 subject_id = int(scope[0])
