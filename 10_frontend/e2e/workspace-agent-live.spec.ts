@@ -1139,7 +1139,7 @@ test('an administrator keeps Excel rosters in the private import workflow', asyn
   await expect(page.getByRole('dialog', { name: '选择表格统计' })).toHaveCount(0)
 })
 
-test('an administrator confirms a private staff roster, downloads credentials and rechecks the live state', async ({ page }) => {
+test('an administrator confirms a private XLSX staff roster, downloads credentials and rechecks the live state', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
   test.setTimeout(210_000)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -1161,21 +1161,30 @@ test('an administrator confirms a private staff roster, downloads credentials an
     [staffRef + '-T', '合成名单教师', 'teacher', currentClass.class_ref],
     [staffRef + '-P', '合成名单心理教师', 'psychological_specialist', ''],
   ]
-  const csv = 'employee_ref,display_name,role,class_refs\r\n'
-    + rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\r\n')
+  const rosterWorkbook = workbook([
+    { name: '教职工名单', rows: [
+      ['# psynova_staff_roster_template_v1'],
+      ['employee_ref', 'display_name', 'role', 'class_refs'],
+      ...rows,
+    ] },
+    { name: '补充备注', rows: [['PRIVATE-SYNTHETIC-NOTE'], ['不属于导入名单的备注']] },
+  ])
   const importWrites: string[] = []
   page.on('request', (request) => {
     if (request.method() === 'POST' && request.url().endsWith('/school/admin/staff/import')) importWrites.push(request.url())
   })
   await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
-    name: 'synthetic-staff-roster.csv', mimeType: 'text/csv', buffer: Buffer.from(csv),
+    name: 'synthetic-staff-roster.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: Buffer.from(rosterWorkbook),
   })
+  await expect(page.getByText('synthetic-staff-roster.xlsx', { exact: true })).toBeVisible({ timeout: 15_000 })
   const outbound = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
   const prepared = await ask(page, '把刚附上的教职工名单整理成让我核对的预览，准备发放首登凭据', '发送任务')
   const request = await outbound
   expect(request.postDataJSON().attachment).toBe('staff_roster')
   expect(request.postData()?.includes(staffRef)).toBe(false)
-  expect(request.postData()).not.toMatch(/synthetic-staff-roster|合成名单教师|employee_ref/)
+  expect(request.postData()).not.toMatch(/synthetic-staff-roster|合成名单教师|employee_ref|PRIVATE-SYNTHETIC-NOTE/)
   expect(prepared.some((event) => event.view?.kind === 'staff_roster_import')).toBe(true)
   const preview = page.getByRole('table', { name: '教职工名单预览' })
   await expect(preview.getByText(rows[0][1], { exact: true })).toBeVisible()

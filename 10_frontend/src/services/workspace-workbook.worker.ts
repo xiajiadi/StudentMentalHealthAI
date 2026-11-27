@@ -1,12 +1,15 @@
 /* global File, MessageEvent, self */
 
-import type { WorkbookResult } from './workspace-table'
-import { readWorkspaceWorkbook, workbookError } from './workspace-workbook'
+import type { WorkbookMode, WorkbookResult } from './workspace-table'
+import { readRosterWorkbook, readWorkspaceWorkbook, workbookError } from './workspace-workbook'
 
-self.onmessage = async (event: MessageEvent<File>) => {
+self.onmessage = async (event: MessageEvent<{ file: File; mode: WorkbookMode }>) => {
   let result: WorkbookResult
   try {
-    result = { sheets: await readWorkspaceWorkbook(await event.data.arrayBuffer()) }
+    const buffer = await event.data.file.arrayBuffer()
+    result = event.data.mode === 'roster'
+      ? { records: await readRosterWorkbook(buffer) }
+      : { sheets: await readWorkspaceWorkbook(buffer) }
   } catch (error) {
     result = { error: workbookError(error) }
   }

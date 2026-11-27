@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { parseCsvRecords, readCsvText } from '@/services/csv-import'
-import { STAFF_ROSTER_COLUMNS, STAFF_ROSTER_MARKER } from '@/services/school-roster-file'
+import { readSchoolRosterRecords, rosterTemplateMarker, STAFF_ROSTER_COLUMNS, STAFF_ROSTER_MARKER } from '@/services/school-roster-file'
+import { ROSTER_WORKBOOK_BYTES, SCHOOL_ROSTER_ROWS } from '@/services/workspace-table'
 import AppDialog from '@/components/app/AppDialog.vue'
 import AppSelect from '@/components/app/AppSelect.vue'
 import AppSelectOption from '@/components/app/AppSelectOption.vue'
-/* global KeyboardEvent, HTMLButtonElement, URL, Blob, File, TextEncoder, btoa */
+/* global AbortController, KeyboardEvent, HTMLButtonElement, URL, Blob, File, TextEncoder, btoa */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -102,7 +102,6 @@ const rosterRun = ref('')
 const rosterImportKey = ref('')
 const rosterProcessed = ref(0)
 const rosterCreated = ref(0)
-const maxRosterRows = 3000
 const rosterBatchSize = 200
 const rosterPreviewConcurrency = 3
 const pendingCredentialUserIds = ref<string[]>([])
@@ -357,35 +356,30 @@ const downloadStaffRosterTemplate = () => {
   link.href = url; link.download = 'psynova-staff-roster-template-v1.csv'; link.click(); URL.revokeObjectURL(url)
 }
 
-let rosterFileAttempt = 0
-let staffFileAttempt = 0
+let rosterRead: AbortController | undefined
+let staffRead: AbortController | undefined
 const parseRosterFile = async (file?: File) => {
-  const attempt = ++rosterFileAttempt
+  rosterRead?.abort()
+  const request = new AbortController()
+  rosterRead = request
   clearFeedback(); preview.value = null; rosterRun.value = ''; rosterImportKey.value = ''; rows.value = []
   rosterProcessed.value = 0
   rosterCreated.value = 0
   pendingCredentialUserIds.value = []
   rosterCredentialDetails.value = {}
   if (!file) return
-  if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
+  if (file.size > ROSTER_WORKBOOK_BYTES) { error.value = '文件不能超过 1 MiB'; return }
   try {
     const expected = ['student_number', 'display_name', 'class_ref', 'grade_level']
-    let records: string[][]
-    if (/\.xlsx$/i.test(file.name)) {
-      const { readSheet } = await import('read-excel-file/universal')
-      const cells = await readSheet(await file.arrayBuffer())
-      if (cells.length > maxRosterRows + 2) throw new Error('导入须包含 1 到 3000 行学生记录')
-      records = cells.map((row) => row.map((cell) => cell == null ? '' : String(cell).trim()))
-    } else {
-      records = parseCsvRecords(await readCsvText(file))
-    }
-    if (attempt !== rosterFileAttempt) return
-    const versionMarker = '# psynova_student_roster_template_v1'
-    if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_student_roster_template_')) {
-      if (records.shift()?.[0] !== versionMarker) throw new Error('花名册模板版本不受支持')
+    const records = await readSchoolRosterRecords(file, request.signal)
+    if (request.signal.aborted) return
+    const marker = rosterTemplateMarker(records[0], '# psynova_student_roster_template_')
+    if (marker) {
+      if (marker !== '# psynova_student_roster_template_v1') throw new Error('花名册模板版本不受支持')
+      records.shift()
     }
     if (JSON.stringify(records.shift()) !== JSON.stringify(expected)) throw new Error('模板列不匹配')
-    if (records.length < 1 || records.length > maxRosterRows) throw new Error('导入须包含 1 到 3000 行学生记录')
+    if (records.length < 1 || records.length > SCHOOL_ROSTER_ROWS) throw new Error('导入须包含 1 到 3000 行学生记录')
     rows.value = records.map((record, index) => {
       if ((record.length !== 3 && record.length !== 4) || record.slice(0, 3).some((cell) => !cell)) throw new Error(`第 ${index + 2} 行信息不完整`)
       return { row_no: index + 1, student_number: record[0]!, display_name: record[1]!, class_ref: record[2]!, ...(record[3] ? { grade_level: record[3] } : {}) }
@@ -393,28 +387,31 @@ const parseRosterFile = async (file?: File) => {
     notice.value = `已读取 ${rows.value.length} 行，按班级分组预览`
     void previewRoster()
   } catch (cause) {
-    if (attempt !== rosterFileAttempt) return
+    if (request.signal.aborted) return
     rows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件'
   }
 }
 
 const parseStaffFile = async (file?: File) => {
-  const attempt = ++staffFileAttempt
+  staffRead?.abort()
+  const request = new AbortController()
+  staffRead = request
   confirmStaffImport.value = false
   clearFeedback(); staffRows.value = []
   if (!file) return
-  if (file.size > 1024 * 1024) { error.value = '文件不能超过 1 MiB'; return }
+  if (file.size > ROSTER_WORKBOOK_BYTES) { error.value = '文件不能超过 1 MiB'; return }
   try {
-    const text = await readCsvText(file)
-    if (attempt !== staffFileAttempt) return
-    const records = parseCsvRecords(text)
-    if (records[0]?.length === 1 && records[0][0]?.startsWith('# psynova_staff_roster_template_')) {
-      if (records.shift()?.[0] !== STAFF_ROSTER_MARKER) throw new Error('教职工模板版本不受支持')
+    const records = await readSchoolRosterRecords(file, request.signal)
+    if (request.signal.aborted) return
+    const marker = rosterTemplateMarker(records[0], '# psynova_staff_roster_template_')
+    if (marker) {
+      if (marker !== STAFF_ROSTER_MARKER) throw new Error('教职工模板版本不受支持')
+      records.shift()
     }
     if (JSON.stringify(records.shift()) !== JSON.stringify(STAFF_ROSTER_COLUMNS)) {
       throw new Error('教职工模板列不匹配')
     }
-    if (records.length < 1 || records.length > maxRosterRows) throw new Error('名单须包含 1 到 3000 行教职工记录')
+    if (records.length < 1 || records.length > SCHOOL_ROSTER_ROWS) throw new Error('名单须包含 1 到 3000 行教职工记录')
     const employeeRows = new Map<string, number>()
     staffRows.value = records.map((record, index) => {
       if (record.length !== 4 || record.slice(0, 3).some((cell) => !cell)) throw new Error(`第 ${index + 2} 行信息不完整`)
@@ -437,7 +434,7 @@ const parseStaffFile = async (file?: File) => {
     })
     notice.value = `已读取 ${staffRows.value.length} 行教职工名单`
   } catch (cause) {
-    if (attempt !== staffFileAttempt) return
+    if (request.signal.aborted) return
     staffRows.value = []; error.value = cause instanceof Error ? cause.message : '无法读取文件'
   }
 }
@@ -854,8 +851,8 @@ onMounted(() => {
   if (props.initialRosterFile) readAttachedRoster(props.initialRosterFile)
 })
 onUnmounted(() => {
-  rosterFileAttempt++
-  staffFileAttempt++
+  rosterRead?.abort()
+  staffRead?.abort()
   credentialRows.value = []
   passphrase.value = ''
   rows.value = []
@@ -908,7 +905,7 @@ onUnmounted(() => {
       <div v-if="isSyntheticDemo" class="lifecycle__staff-import">
         <h3>导入普通教师和心理教师名单</h3>
         <button type="button" class="lifecycle__secondary" @click="downloadStaffRosterTemplate">下载 CSV 模板</button>
-        <label class="lifecycle__field">选择 CSV 文件<input type="file" accept=".csv,text/csv" :disabled="busy" @change="parseStaffFile(($event.target as HTMLInputElement).files?.[0])"></label>
+        <label class="lifecycle__field">选择 CSV 或 XLSX 文件<input type="file" accept=".csv,.xlsx" :disabled="busy" @change="parseStaffFile(($event.target as HTMLInputElement).files?.[0])"></label>
         <p>每次最多 3,000 人。普通教师班级用竖线分隔，心理教师不填班级</p>
         <div v-if="staffRows.length" class="lifecycle__boundary">已读取 {{ staffRows.length }} 行，普通教师 {{ staffRows.filter(row => row.role === 'teacher').length }} 人，心理教师 {{ staffRows.filter(row => row.role === 'psychological_specialist').length }} 人</div>
         <template v-if="embeddedSection === 'staff' && staffRows.length">

@@ -1,6 +1,7 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { describe, expect, it } from 'vitest'
-import { readWorkspaceWorkbook } from '../src/services/workspace-workbook'
+import { readRosterWorkbook, readWorkspaceWorkbook } from '../src/services/workspace-workbook'
+import { rosterTemplateMarker, STAFF_ROSTER_COLUMNS, STAFF_ROSTER_MARKER } from '../src/services/school-roster-file'
 import { workbook } from './fixtures/workbook'
 
 describe('workspace workbook analysis', () => {
@@ -34,5 +35,34 @@ describe('workspace workbook analysis', () => {
     const file = zipSync(entries)
     expect(file.byteLength).toBeLessThan(2 * 1024 * 1024)
     await expect(readWorkspaceWorkbook(file.buffer)).rejects.toThrow('请选择内容更少的 XLSX 文件')
+  })
+})
+
+describe('private roster workbook', () => {
+  it('reads only the first sheet, keeping a text identifier and an empty class cell', async () => {
+    const file = workbook([
+      { name: '教职工', rows: [
+        [STAFF_ROSTER_MARKER],
+        STAFF_ROSTER_COLUMNS,
+        ['0007', '合成教师', 'teacher', 'C1|C2'],
+        ['0008', '合成心理教师', 'psychological_specialist', null],
+      ] },
+      { name: '说明', rows: [['不属于名单的私有备注'], [900]] },
+    ])
+    const records = await readRosterWorkbook(file.buffer)
+    expect(rosterTemplateMarker(records[0], '# psynova_staff_roster_template_')).toBe(STAFF_ROSTER_MARKER)
+    expect(records.slice(1)).toEqual([
+      STAFF_ROSTER_COLUMNS,
+      ['0007', '合成教师', 'teacher', 'C1|C2'],
+      ['0008', '合成心理教师', 'psychological_specialist', ''],
+    ])
+  })
+
+  it('keeps the 3000 data rows allowed by the existing import workflow', async () => {
+    const staff = Array.from({ length: 3000 }, (_, index) => [`EMP-${index}`, '合成教师', 'teacher', 'C1'])
+    const file = workbook([{ name: '教职工', rows: [[STAFF_ROSTER_MARKER], STAFF_ROSTER_COLUMNS, ...staff] }])
+    await expect(readRosterWorkbook(file.buffer)).resolves.toHaveLength(3002)
+    const larger = workbook([{ name: '教职工', rows: [[STAFF_ROSTER_MARKER], STAFF_ROSTER_COLUMNS, ...staff, staff[0]] }])
+    await expect(readRosterWorkbook(larger.buffer)).rejects.toThrow('最多 3000 条记录')
   })
 })

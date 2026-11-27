@@ -13,7 +13,8 @@ export type NumericColumn = {
 export type WorkspaceTableSummary = { rows: number; columns: NumericColumn[] }
 export type LocalWorkspaceTable = { rows: number; columns: (NumericColumn & { label: string })[] }
 export type LocalWorkspaceSheet = { name: string; table: LocalWorkspaceTable }
-export type WorkbookResult = { sheets: LocalWorkspaceSheet[] } | { error: string }
+export type WorkbookMode = 'statistics' | 'roster'
+export type WorkbookResult = { sheets: LocalWorkspaceSheet[] } | { records: string[][] } | { error: string }
 
 export const WORKSPACE_TABLE_ROWS = 2000
 export const WORKSPACE_TABLE_COLUMNS = 40
@@ -21,6 +22,9 @@ export const WORKBOOK_BYTES = 2 * 1024 * 1024
 export const WORKBOOK_INVALID = 'Excel 暂时无法读取，请检查文件是否损坏或受保护'
 export const WORKBOOK_FILE_LIMIT = '请选择不超过 2 MiB 的 XLSX 文件'
 export const WORKBOOK_CONTENT_LIMIT = '请选择内容更少的 XLSX 文件'
+export const ROSTER_WORKBOOK_BYTES = 1024 * 1024
+export const ROSTER_WORKBOOK_FILE_LIMIT = '请选择不超过 1 MiB 的 XLSX 名单'
+export const SCHOOL_ROSTER_ROWS = 3000
 
 const numeric = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
 

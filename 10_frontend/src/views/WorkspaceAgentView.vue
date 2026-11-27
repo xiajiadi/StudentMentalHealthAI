@@ -463,6 +463,7 @@ async function reviewDocumentForLibrary() {
 }
 
 async function selectRoster(file: File) {
+  roster.value = undefined
   if (!/\.(csv|xlsx)$/i.test(file.name) || file.size > 1024 * 1024) {
     attachmentError.value = '请选择不超过 1 MiB 的 CSV 或 XLSX 名单'
     return
@@ -470,13 +471,18 @@ async function selectRoster(file: File) {
   const request = new AbortController()
   attachmentRequest = request
   attachmentReading.value = 'roster'
-  const kind = await identifyRosterFile(file)
-  if (attachmentRequest === request) attachmentReading.value = false
-  if (request.signal.aborted) return
-  roster.value = { file, kind }
-  if (!command.value.trim()) command.value = kind === 'staff_roster'
-    ? '帮我核对这份教职工名单，准备导入并生成初始凭据'
-    : '帮我检查这份学生名单，准备导入、分班和生成初始账号'
+  try {
+    const kind = await identifyRosterFile(file, request.signal)
+    if (request.signal.aborted) return
+    roster.value = { file, kind }
+    if (!command.value.trim()) command.value = kind === 'staff_roster'
+      ? '帮我核对这份教职工名单，准备导入并生成初始凭据'
+      : '帮我检查这份学生名单，准备导入、分班和生成初始账号'
+  } catch (error) {
+    if (!request.signal.aborted) attachmentError.value = error instanceof Error ? error.message : '未能读取名单'
+  } finally {
+    if (attachmentRequest === request) attachmentReading.value = false
+  }
 }
 
 function selectCatBank(file: File) {

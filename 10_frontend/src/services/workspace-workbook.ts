@@ -1,28 +1,31 @@
 /* global TextDecoder */
 
 import { unzipSync, zipSync } from 'fflate'
-import readXlsxFile from 'read-excel-file/universal'
+import readXlsxFile, { readSheet } from 'read-excel-file/universal'
 import { Parser } from 'saxen'
 import {
-  summarizeWorkspaceRows, WORKBOOK_BYTES, WORKBOOK_CONTENT_LIMIT, WORKBOOK_FILE_LIMIT, WORKBOOK_INVALID,
-  WORKSPACE_TABLE_COLUMNS, WORKSPACE_TABLE_ROWS, type LocalWorkspaceSheet,
+  ROSTER_WORKBOOK_BYTES, ROSTER_WORKBOOK_FILE_LIMIT, SCHOOL_ROSTER_ROWS, summarizeWorkspaceRows, WORKBOOK_BYTES,
+  WORKBOOK_CONTENT_LIMIT, WORKBOOK_FILE_LIMIT, WORKBOOK_INVALID,
+  WORKSPACE_TABLE_COLUMNS, WORKSPACE_TABLE_ROWS, type LocalWorkspaceSheet, type WorkbookMode,
 } from './workspace-table'
 
 const EXPANDED_BYTES = 8 * 1024 * 1024
 const WORKBOOK_PARTS = 200
 const WORKBOOK_SHEETS = 8
 const WORKBOOK_LIMIT = '请选择最多 8 个工作表、每表 40 列和 2000 行数据的 XLSX'
+const ROSTER_WORKBOOK_LIMIT = '请选择最多 3000 条记录、每表不超过 40 列的 XLSX 名单'
 const NO_NUMERIC_SHEETS = '请选择含数字单元格的 XLSX 工作表'
 const UNSAFE_PARTS = new Set(['.', '..', '__proto__', 'constructor', 'prototype'])
 const WORKBOOK_ERRORS = new Set([
   WORKBOOK_INVALID, WORKBOOK_FILE_LIMIT, WORKBOOK_LIMIT, WORKBOOK_CONTENT_LIMIT, NO_NUMERIC_SHEETS,
+  ROSTER_WORKBOOK_FILE_LIMIT, ROSTER_WORKBOOK_LIMIT,
 ])
 
 export function workbookError(error: unknown): string {
   return error instanceof Error && WORKBOOK_ERRORS.has(error.message) ? error.message : WORKBOOK_INVALID
 }
 
-function validateSheetCoordinates(xml: string): number {
+function validateSheetCoordinates(xml: string, rowLimit: number, limitMessage: string): number {
   const parser = new Parser()
   let dataSections = 0
   let rowCount = 0
@@ -39,24 +42,30 @@ function validateSheetCoordinates(xml: string): number {
     const address = refs.length ? decode(attributes[refs[0]] ?? '') : ''
     if (name === 'row') {
       rowCount++
-      if (rowCount > WORKSPACE_TABLE_ROWS + 1 || (address && (
-        !/^[1-9][0-9]{0,3}$/.test(address) || Number(address) > WORKSPACE_TABLE_ROWS + 1
-      ))) throw new Error(WORKBOOK_LIMIT)
+      if (rowCount > rowLimit || (address && (
+        !/^[1-9][0-9]{0,3}$/.test(address) || Number(address) > rowLimit
+      ))) throw new Error(limitMessage)
       return
     }
     const match = /^([A-Z]{1,2})([1-9][0-9]{0,3})$/.exec(address)
-    if (!match) throw new Error(WORKBOOK_LIMIT)
+    if (!match) throw new Error(limitMessage)
     const column = [...match[1]].reduce((value, character) => value * 26 + character.charCodeAt(0) - 64, 0)
-    if (column > WORKSPACE_TABLE_COLUMNS || Number(match[2]) > WORKSPACE_TABLE_ROWS + 1) {
-      throw new Error(WORKBOOK_LIMIT)
+    if (column > WORKSPACE_TABLE_COLUMNS || Number(match[2]) > rowLimit) {
+      throw new Error(limitMessage)
     }
   })
   parser.parse(xml)
   return dataSections
 }
 
-export async function readWorkspaceWorkbook(buffer: ArrayBuffer): Promise<LocalWorkspaceSheet[]> {
-  if (!buffer.byteLength || buffer.byteLength > WORKBOOK_BYTES) throw new Error(WORKBOOK_FILE_LIMIT)
+function openBoundedWorkbook(buffer: ArrayBuffer, mode: WorkbookMode) {
+  const roster = mode === 'roster'
+  const bytes = roster ? ROSTER_WORKBOOK_BYTES : WORKBOOK_BYTES
+  const fileError = roster ? ROSTER_WORKBOOK_FILE_LIMIT : WORKBOOK_FILE_LIMIT
+  const rowLimit = roster ? SCHOOL_ROSTER_ROWS + 2 : WORKSPACE_TABLE_ROWS + 1
+  const sectionLimit = roster ? WORKBOOK_PARTS : WORKBOOK_SHEETS
+  const limitMessage = roster ? ROSTER_WORKBOOK_LIMIT : WORKBOOK_LIMIT
+  if (!buffer.byteLength || buffer.byteLength > bytes) throw new Error(fileError)
   const seen = new Set<string>()
   let expanded = 0
   const entries = unzipSync(new Uint8Array(buffer), {
@@ -78,12 +87,21 @@ export async function readWorkspaceWorkbook(buffer: ArrayBuffer): Promise<LocalW
   const decoder = new TextDecoder()
   let sections = 0
   for (const entry of Object.values(entries)) {
-    sections += validateSheetCoordinates(decoder.decode(entry))
-    if (sections > WORKBOOK_SHEETS) throw new Error(WORKBOOK_LIMIT)
+    sections += validateSheetCoordinates(decoder.decode(entry), rowLimit, limitMessage)
+    if (sections > sectionLimit) throw new Error(limitMessage)
   }
   // Stored ZIP entries let the existing reader reuse the bounded content without spawning
   // independent decompression workers. It handles shared strings, styles and sheet mappings.
-  const sheets = await readXlsxFile(zipSync(entries, { level: 0 }).buffer)
+  return zipSync(entries, { level: 0 }).buffer
+}
+
+export async function readRosterWorkbook(buffer: ArrayBuffer): Promise<string[][]> {
+  const rows = await readSheet(openBoundedWorkbook(buffer, 'roster'))
+  return rows.map((row) => row.map((cell) => cell == null ? '' : String(cell).trim()))
+}
+
+export async function readWorkspaceWorkbook(buffer: ArrayBuffer): Promise<LocalWorkspaceSheet[]> {
+  const sheets = await readXlsxFile(openBoundedWorkbook(buffer, 'statistics'))
   if (sheets.length > WORKBOOK_SHEETS) throw new Error(WORKBOOK_LIMIT)
   const result: LocalWorkspaceSheet[] = []
   for (const sheet of sheets) {
