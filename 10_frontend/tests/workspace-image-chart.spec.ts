@@ -66,24 +66,35 @@ describe('workspace line chart estimates', () => {
     }
     stroke([100, 110, 150], orange)
     legend('North', 150, blue)
+    words.push(word('Campus', 199, 11, 43))
     legend('South', 290, orange)
     const lines = readWorkspaceLineChart(raster, words)?.split('\n').slice(1)
     expect(lines).toHaveLength(8)
     expect(lines?.slice(0, 5)).toEqual([
-      '橙线 · South', 'April 约 12.5', 'May 约 10', 'June 约 0', '蓝线 · North',
+      '橙线 · South', 'April 约 12.5', 'May 约 10', 'June 约 0', '蓝线 · North Campus',
     ])
     expect(lines?.[5]).toBe('April 约 -15')
     expect(Math.abs(Number(lines?.[6].split('约 ')[1]) - 10)).toBeLessThan(0.3)
     expect(lines?.[7]).toBe('June 约 20')
   })
 
-  it('keeps three series identifiable by color when no legend is available', () => {
+  it.each([3, 4])('keeps %i series identifiable by color when no legend is available', (count) => {
     const { raster, words, stroke } = fixture(['30', '10', '-10', '-30'])
     stroke([150, 160, 165], orange)
     stroke([243, 230, 220], [30, 155, 78, 255])
+    if (count === 4) stroke([40, 48, 60], [114, 40, 180, 255])
     const result = readWorkspaceLineChart(raster, words)?.split('\n').slice(1)
-    expect(result?.filter((line) => line.endsWith('线'))).toEqual(['橙线', '绿线', '蓝线'])
-    expect(result).toHaveLength(12)
+    expect(result?.filter((line) => line.endsWith('线'))).toEqual(['橙线', '绿线', '蓝线', '紫线'].slice(0, count))
+    expect(result).toHaveLength(count * 4)
+  })
+
+  it('does not silently drop a fifth visible series', () => {
+    const { raster, words, stroke } = fixture(['30', '10', '-10', '-30'])
+    stroke([150, 160, 165], orange)
+    stroke([243, 230, 220], [30, 155, 78, 255])
+    stroke([40, 48, 60], [114, 40, 180, 255])
+    stroke([252, 256, 260], [220, 40, 60, 255])
+    expect(readWorkspaceLineChart(raster, words)).toBeUndefined()
   })
 
   it('does not estimate when the same hue belongs to two lines', () => {

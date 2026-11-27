@@ -212,8 +212,13 @@ function plotTracks({ data, width }: ChartRaster, { left, right, top, bottom }: 
     for (const [i, { centers }] of tracks.entries()) {
       if (!counts[i]) continue
       const band = last[i] - first[i]
-      if (band > maxStrokeHeight || band + 1 - counts[i] > 2
-        || first[i] === 0 || last[i] === height - 1) return
+      if (band > maxStrokeHeight || first[i] === 0 || last[i] === height - 1) return
+      if (band + 1 - counts[i] > 2) {
+        const covered = tracks.some((_, other) => other !== i && counts[other] > 0
+          && first[other] <= last[i] && last[other] >= first[i])
+        if (!covered) return
+        continue
+      }
       const center = top + (first[i] + last[i]) / 2
       if (Math.abs(center - centers[x - 1]) > maxStrokeHeight) return
       centers[x] = center
@@ -266,7 +271,18 @@ function lineCaption(hue: number, raster: ChartRaster, words: LocatedWord[], top
     }
     return false
   })
-  return { color, name: labels.length === 1 ? labels[0].text : undefined }
+  if (labels.length !== 1) return { color, name: undefined }
+  const first = labels[0]
+  const neighbors = legendWords.filter((word) => word.left >= first.left
+    && Math.abs(word.y - first.y) <= 5).sort((a, b) => a.left - b.left)
+  const name = [first.text]
+  let right = first.right
+  for (const word of neighbors.slice(1)) {
+    if (word.left - right > 10) break
+    name.push(word.text)
+    right = word.right
+  }
+  return { color, name: name.join(' ') }
 }
 
 export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]): string | undefined {
