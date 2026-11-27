@@ -35,6 +35,7 @@ from .models import (
 )
 
 _TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_FEEDBACK_REF = re.compile(r"FEED_[A-Za-z0-9][A-Za-z0-9_.-]{0,122}")
 _CATEGORY = re.compile(r"^[A-Z][A-Z0-9_]{0,47}$")
 _MAX_CONTENT_CHARS = 65_536
 _MAX_CIPHERTEXT_BYTES = 1_048_576
@@ -91,6 +92,7 @@ class SchoolSupportCaseContentDTO:
     source_type: str
     source_text: str = field(repr=False)
     professional_plan: str | None = field(repr=False)
+    feedback_source: tuple[str, int] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -180,6 +182,17 @@ def _source_type(value: object) -> str:
     if not isinstance(value, str) or value not in _SOURCE_TYPES:
         raise SchoolSupportError("invalid source_type")
     return value
+
+
+def _feedback_source(reference: object, revision: object) -> tuple[str, int]:
+    if (
+        not isinstance(reference, str)
+        or _FEEDBACK_REF.fullmatch(reference) is None
+        or type(revision) is not int
+        or not 1 <= revision <= 2_147_483_647
+    ):
+        raise SchoolSupportError("stored feedback source is invalid")
+    return reference, revision
 
 
 def _new_ref(prefix: Literal["SSC", "SSA"]) -> str:
@@ -319,6 +332,7 @@ class SchoolSupportRepository:
         trace_id: str,
         retention_due_at: datetime | None = None,
         now: datetime | None = None,
+        feedback_source: tuple[str, int] | None = None,
     ) -> SchoolSupportCaseDTO:
         school_id = _positive_int(school_id, "school_id")
         subject_id = _positive_int(subject_id, "subject_id")
@@ -331,7 +345,17 @@ class SchoolSupportRepository:
         trace = _token(trace_id, "trace_id") or ""
         clock = _utc_naive(now)
         retention = _utc_naive(retention_due_at) if retention_due_at is not None else None
-        protected = self._encrypt(source, _CASE_CONTENT_SCHEMA, "source_text")
+        source_payload: dict[str, str | int] = {
+            "schema_version": _CASE_CONTENT_SCHEMA,
+            "source_text": source,
+        }
+        if feedback_source is not None:
+            if source_type != "STUDENT":
+                raise SchoolSupportError("only student requests can link a feedback source")
+            reference, revision = _feedback_source(*feedback_source)
+            source_payload["feedback_ref"] = reference
+            source_payload["feedback_revision"] = revision
+        protected = self._encrypt_payload(source_payload, _CASE_CONTENT_SCHEMA)
         case = SchoolSupportCase(
             case_ref=_new_ref("SSC"),
             school_id=school_id,
@@ -403,7 +427,7 @@ class SchoolSupportRepository:
             _token(case_ref, "case_ref") or "",
             lock=False,
         )
-        source = self._decrypt(
+        source_text, source_payload = self._decrypt_content(
             _envelope(
                 case.source_ciphertext,
                 case.source_cipher_format_version,
@@ -414,6 +438,13 @@ class SchoolSupportRepository:
             _CASE_CONTENT_SCHEMA,
             "source_text",
         )
+        feedback_source = None
+        if "feedback_ref" in source_payload or "feedback_revision" in source_payload:
+            if case.source_type != "STUDENT":
+                raise SchoolSupportError("stored feedback source is invalid")
+            feedback_source = _feedback_source(
+                source_payload.get("feedback_ref"), source_payload.get("feedback_revision")
+            )
         plan = (
             self._decrypt(
                 _envelope(
@@ -431,8 +462,9 @@ class SchoolSupportRepository:
         )
         return SchoolSupportCaseContentDTO(
             source_type=case.source_type,
-            source_text=source,
+            source_text=source_text,
             professional_plan=plan,
+            feedback_source=feedback_source,
         )
 
     async def list_cases(
@@ -1223,20 +1255,26 @@ class SchoolSupportRepository:
         return action
 
     def _encrypt(self, text: str, schema: str, field_name: str) -> EncryptedPayload:
-        protected = self.protection.encrypt_json(
-            {"schema_version": schema, field_name: text},
-            payload_schema_version=schema,
-        )
+        return self._encrypt_payload({"schema_version": schema, field_name: text}, schema)
+
+    def _encrypt_payload(self, payload: dict[str, str | int], schema: str) -> EncryptedPayload:
+        protected = self.protection.encrypt_json(payload, payload_schema_version=schema)
         if not protected.ciphertext or len(protected.ciphertext) > _MAX_CIPHERTEXT_BYTES:
             raise SchoolSupportError("encrypted support content is too large")
         return protected
 
     def _decrypt(self, encrypted: EncryptedPayload, schema: str, field_name: str) -> str:
+        text, _ = self._decrypt_content(encrypted, schema, field_name)
+        return text
+
+    def _decrypt_content(
+        self, encrypted: EncryptedPayload, schema: str, field_name: str
+    ) -> tuple[str, dict[str, object]]:
         payload = self.protection.decrypt_json(encrypted)
         value = payload.get(field_name)
         if payload.get("schema_version") != schema or not isinstance(value, str):
             raise SchoolSupportError("stored support content is invalid")
-        return value
+        return value, payload
 
     def _append_event(
         self,

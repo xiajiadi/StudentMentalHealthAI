@@ -498,7 +498,7 @@ test('published school feedback is read in the learner conversation over the pri
 
 test('a learner asks the school to clarify the exact published feedback revision', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1' || process.env.PSYNOVA_AGENT_QA_FEEDBACK !== '1', 'Requires a dedicated synthetic school and published feedback')
-  test.setTimeout(200_000)
+  test.setTimeout(260_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   const published = await page.request.get(origin + '/api/v1/school/feedback/student')
@@ -547,6 +547,7 @@ test('a learner asks the school to clarify the exact published feedback revision
   expect((await replay.json()).data.case_ref).toBe(receipt.case_ref)
 
   const casePath = '/api/v1/school/support/cases/' + receipt.case_ref
+  const evidencePath = casePath + '/plan-evidence'
   const stored = await page.request.get(origin + casePath)
   expect(stored.status()).toBe(200)
   const exactQuestion = `请说明测评反馈第 ${feedback.content_revision} 版\n反馈编号 ${feedback.feedback_ref}\n\n${question}`
@@ -559,6 +560,7 @@ test('a learner asks the school to clarify the exact published feedback revision
 
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   expect((await page.request.get(origin + casePath)).status()).toBe(404)
+  expect((await page.request.get(origin + evidencePath)).status()).toBe(403)
   expect((await page.request.post(origin + endpoint, {
     headers: await csrfHeaders(`qa-feedback-teacher-${Date.now()}`), data: payload,
   })).status()).toBe(403)
@@ -567,12 +569,40 @@ test('a learner asks the school to clarify the exact published feedback revision
   const available = await page.request.get(origin + casePath)
   expect(available.ok()).toBe(true)
   expect((await available.json()).data).toMatchObject({ status: 'SUBMITTED', content: null })
+  expect((await page.request.get(origin + evidencePath)).status()).toBe(404)
   const triaged = await page.request.post(origin + casePath + '/transitions', {
     headers: await csrfHeaders(`qa-feedback-accept-${Date.now()}`),
     data: { expected_version: receipt.state_version, target_status: 'TRIAGED' },
   })
   expect(triaged.ok()).toBe(true)
   expect((await triaged.json()).data).toMatchObject({ status: 'TRIAGED', content: exactQuestion })
+
+  const planEvents = await ask(page, '给我授权处理的学校支持请求拟一份草案，我先核对学生具体问的是哪版反馈', '发送任务')
+  expect(planEvents.some((event) => event.view?.kind === 'specialist_support_plan')).toBe(true)
+  await page.getByRole('button', { name: '打开支持计划草案' }).last().click()
+  await page.getByRole('button', { name: new RegExp(receipt.case_ref.slice(-8)) }).click()
+  await expect(page.getByText(exactQuestion, { exact: true })).toBeVisible()
+  const pendingEvidence = page.waitForResponse((response) => response.url().endsWith(evidencePath))
+  await page.getByRole('button', { name: '核对已发布测评反馈' }).click()
+  const evidence = await pendingEvidence
+  expect(evidence.ok()).toBe(true)
+  expect(evidence.headers()['cache-control']).toContain('no-store')
+  expect((await evidence.json()).data.feedback).toMatchObject({
+    title: feedback.title, body: feedback.body, content_revision: feedback.content_revision,
+  })
+  const panel = page.getByRole('region', { name: '已发布测评反馈' })
+  await expect(panel.getByText(readSchoolFeedbackContent(feedback.body).body, { exact: true })).toBeVisible()
+  await panel.getByRole('checkbox', { name: '将这份反馈列为计划依据' }).check()
+  await page.getByRole('button', { name: '生成可编辑草案' }).click()
+  const draft = await page.getByRole('textbox', { name: '专业支持计划' }).inputValue()
+  expect(draft).toContain(`《${feedback.title}》第 ${feedback.content_revision} 版`)
+  expect(draft).not.toContain(question)
+  expect(draft).not.toContain(feedback.body)
+  expect((await (await page.request.get(origin + casePath)).json()).data.status).toBe('TRIAGED')
+  const specialistHistory = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  const specialistTranscript = await specialistHistory.text()
+  expect(specialistTranscript).not.toContain(question)
+  expect(specialistTranscript).not.toContain(feedback.title)
 })
 
 test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {

@@ -668,10 +668,11 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             raise _missing()
         return case.subject_id, case.class_id, class_student_id
 
-    async def latest_assigned_published_feedback(
-        self, uow, actor, support_case, account_id, role_id, now
+    async def assigned_published_feedback_for_support(
+        self, uow, actor, support_case, account_id, role_id, now,
+        *, source: tuple[str, int] | None = None,
     ):
-        """Read one published revision for the same enrollment scope after support authorization."""
+        """Resolve the linked revision or the latest feedback for a general support request."""
         m = self._db_models
         feedback = m.SchoolFeedbackRecord
         review = m.SchoolProfessionalReviewCase
@@ -680,7 +681,7 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             .add_columns(m.MeasurementTask.id.label("task_id"))
             .subquery()
         )
-        ref = await uow.session.scalar(
+        candidates = (
             self._published_candidates(actor, now)
             .join_from(m.MeasurementTask, assigned, assigned.c.task_id == m.MeasurementTask.id)
             .where(
@@ -692,8 +693,14 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
                 review.status == "APPROVED",
                 feedback.case_version == review.version,
             )
-            .order_by(feedback.published_at.desc(), feedback.id.desc())
-            .limit(1)
+        )
+        if source is not None:
+            reference, revision = source
+            candidates = candidates.where(
+                feedback.feedback_ref == reference, feedback.content_revision == revision
+            )
+        ref = await uow.session.scalar(
+            candidates.order_by(feedback.published_at.desc(), feedback.id.desc()).limit(1)
         )
         if ref is None:
             return None
@@ -709,6 +716,8 @@ class SchoolFeedbackPersistenceAdapter(SchoolProfessionalReviewPersistenceAdapte
             or row.case_version != case.version
         ):
             raise _missing()
+        if source is not None and (row.feedback_ref, row.content_revision) != source:
+            return None
         result = self._projection(row, case, assessment, student=True)
         await uow.audit.append(
             action="school_feedback.support_plan_read",

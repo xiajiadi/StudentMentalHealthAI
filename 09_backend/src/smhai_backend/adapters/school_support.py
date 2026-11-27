@@ -17,6 +17,9 @@ from smhai_backend.domains.school_support.service import (
 _CASE_RESOURCE = "school_support_case"
 _ACTION_RESOURCE = "school_support_action"
 _USER_REF = re.compile(r"^USER_([A-Za-z0-9][A-Za-z0-9_.-]{0,122})$")
+_LEGACY_FEEDBACK_QUESTION = re.compile(
+    r"^请说明测评反馈第 [1-9][0-9]{0,9} 版\n反馈编号 FEED_[A-Za-z0-9_.-]{1,123}\n\n"
+)
 _SOURCE_LABELS = {"TEACHER": "TEACHER_REFERRAL", "STUDENT": "STUDENT_REQUEST"}
 
 
@@ -895,6 +898,7 @@ class SchoolSupportPersistenceAdapter:
                     created_by_membership_role_id=role_id,
                     trace_id=trace_id,
                     now=now,
+                    feedback_source=feedback_source,
                 )
             except Exception as exc:
                 _repo_error(exc)
@@ -1120,8 +1124,16 @@ class SchoolSupportPersistenceAdapter:
             case = await self._case(uow, actor, case_ref, lock=True)
             if case.owner_membership_role_id != role_id or case.status != "TRIAGED":
                 raise _not_found()
-            feedback = await self._reviews.latest_assigned_published_feedback(
-                uow, actor, case, account_id, role_id, now
+            source = None
+            if case.source_type == "STUDENT":
+                content = await self._case_content(uow, actor, case.case_ref)
+                source = content.feedback_source
+                if source is None and _LEGACY_FEEDBACK_QUESTION.match(content.source_text):
+                    # Old records kept the link in editable text. With no
+                    # verified source, avoid showing an unrelated publication.
+                    return {"feedback": None}
+            feedback = await self._reviews.assigned_published_feedback_for_support(
+                uow, actor, case, account_id, role_id, now, source=source
             )
             return {"feedback": feedback}
 
