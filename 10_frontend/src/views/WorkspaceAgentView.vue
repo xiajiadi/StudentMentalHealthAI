@@ -281,8 +281,9 @@ async function sendChat(text: string) {
 async function run() {
   const text = command.value.trim()
   if (agentMode.value) {
-    if (!text || agentBusy.value || attachmentReading.value || (catFileIsCsv.value && !catCsvConfirmed.value)) return
-    if (await workspaceAgent.value?.submit(text) && command.value.trim() === text) command.value = ''
+    const replacesRunId = workspaceAgent.value?.revisionRunId
+    if (!text || (agentBusy.value && !replacesRunId) || attachmentReading.value || (catFileIsCsv.value && !catCsvConfirmed.value)) return
+    await workspaceAgent.value?.submit(text, replacesRunId)
     return
   }
   if (!text || running.value || chatSending.value || confirming.value || chat.value?.composerBlocked) return
@@ -621,6 +622,7 @@ function dateLabel(value: string) {
         :cat-csv-confirmed="catCsvConfirmed"
         :table-summary="tableSummary"
         @busy="agentBusy = $event"
+        @accepted="(text) => { if (command.trim() === text) command = '' }"
         @changed="loadOverview"
         @support="$router.push({ name: 'student-workspace', query: { chat: '1' } })"
       />
@@ -656,9 +658,14 @@ function dateLabel(value: string) {
             </AppButton>
           </div>
           <span class="workspace-agent__name"><Sparkles :size="17" aria-hidden="true" />PsyNova Agent</span>
-          <AppButton v-if="running || agentBusy" class="workspace-agent__tool" variant="quiet" aria-label="取消任务" title="取消任务" @click="cancelRun">
-            <Square :size="16" aria-hidden="true" />
-          </AppButton>
+          <template v-if="running || agentBusy">
+            <AppButton v-if="agentMode && workspaceAgent?.revisionRunId" class="workspace-agent__send" type="submit" :disabled="!command.trim() || Boolean(attachmentReading) || (catFileIsCsv && !catCsvConfirmed)">
+              发送补充
+            </AppButton>
+            <AppButton class="workspace-agent__tool" variant="quiet" aria-label="取消任务" title="取消任务" :disabled="workspaceAgent?.replacing" @click="cancelRun">
+              <Square :size="16" aria-hidden="true" />
+            </AppButton>
+          </template>
           <AppButton v-else class="workspace-agent__send" type="submit" :loading="chatSending" :disabled="(!command.trim() && !chat?.needsRetry) || confirming || Boolean(attachmentReading) || chat?.composerBlocked || (catFileIsCsv && !catCsvConfirmed)" :aria-label="role === 'student' ? (chat?.needsRetry ? '重试发送' : '发送消息') : '发送任务'">
             <ArrowUp :size="21" aria-hidden="true" />
           </AppButton>

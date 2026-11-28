@@ -440,6 +440,122 @@ async def test_only_the_owner_can_cancel_active_task_and_timeout_allows_new_turn
     assert (await client.get(path)).json()["data"]["active"] is False
 
 
+async def test_replacement_keeps_the_screened_task_and_reuses_a_ready_document(client, model_lane):
+    model, safety = model_lane
+    path = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    task_prompt = "生成课堂活动，保留活动目标并提供可编辑文档"
+    revised_prompt = "活动形式改用匿名纸卡，其他要求照旧"
+    original = "# 课堂活动\n\n练习倾听\n\n同桌交流"
+    draft_ready = asyncio.Event()
+    interrupted = asyncio.Event()
+    finish_original = asyncio.Event()
+
+    async def steps(messages, _definitions, _context):
+        current = next(item["content"] for item in reversed(messages) if item["role"] == "user")
+        if current == task_prompt:
+            if messages[-1]["role"] != "tool":
+                return assistant_step(
+                    tool="save_markdown",
+                    arguments=json.dumps({"filename": "activity.md", "markdown": original}),
+                )
+            draft_ready.set()
+            try:
+                await finish_original.wait()
+            finally:
+                interrupted.set()
+            return assistant_step(text="已生成原文档")
+        assert current == revised_prompt
+        assert any(item["content"] == task_prompt for item in messages if item["role"] == "user")
+        assert interrupted.is_set()
+        if messages[-1]["role"] != "tool":
+            assert "练习倾听" not in json.dumps(messages, ensure_ascii=False)
+            return assistant_step(
+                tool="read_workspace_document", arguments='{"selection":"activity.md"}'
+            )
+        result = json.loads(messages[-1]["content"])
+        if "markdown" in result:
+            assert result["markdown"] == original
+            return assistant_step(
+                tool="save_markdown",
+                arguments=json.dumps({
+                    "filename": "activity-revised.md",
+                    "revision_of": result["document_ref"],
+                    "markdown": original.replace("同桌交流", "匿名纸卡"),
+                }),
+            )
+        return assistant_step(text="已按新要求修订原文档")
+
+    model.side_effect = steps
+    first = asyncio.create_task(client.post(
+        f"{path}/turn", headers=headers, json={"text": task_prompt, "synthetic_only": True}
+    ))
+    try:
+        await asyncio.wait_for(draft_ready.wait(), 3)
+        run_id = (await client.get(path)).json()["data"]["active_run_id"]
+        payload = {"text": revised_prompt, "synthetic_only": True, "replaces_run_id": run_id}
+        await select(client, headers, "ADMIN", SECOND)
+        assert (await client.post(f"{path}/turn", headers=headers, json=payload)).status_code == 409
+        await select(client, headers, "TEACHER")
+        assert (await client.get(path)).json()["data"]["active_run_id"] == run_id
+        assert (await client.post(f"{path}/turn", json=payload)).status_code == 403
+        response = await client.post(f"{path}/turn", headers=headers, json=payload)
+        assert response.status_code == 200
+        previous = await asyncio.wait_for(first, 3)
+        assert json.loads(previous.text.splitlines()[-1])["status"] == "interrupted"
+        events = [json.loads(line) for line in response.text.splitlines()]
+        assert events[0]["replaces_run_id"] == run_id
+        assert events[-1]["status"] == "completed"
+        assert [event["view"]["kind"] for event in events if event["type"] == "tool_result"] == [
+            "workspace_document_read", "markdown",
+        ]
+        assert safety.check_input.await_args.args[0]["current_user_message"] == (
+            f"{task_prompt}\n\n{revised_prompt}"
+        )
+        assert (await client.post(f"{path}/turn", headers=headers, json=payload)).status_code == 409
+        stored = (await client.get(path)).json()["data"]["events"]
+        assert stored[-len(events):] == events
+    finally:
+        finish_original.set()
+        if not first.done():
+            first.cancel()
+            await asyncio.gather(first, return_exceptions=True)
+
+
+async def test_retrying_a_failed_replacement_keeps_the_original_instructions(client, model_lane):
+    model, safety = model_lane
+    path = f"{BASE}/conversation/turn"
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    original = "核对班级测评进度并生成简报"
+    change = "统计时间改为不限"
+
+    async def send(text, previous=None):
+        payload = {"text": text, "synthetic_only": True}
+        if previous:
+            payload["replaces_run_id"] = previous
+        response = await client.post(path, headers=headers, json=payload)
+        assert response.status_code == 200
+        return json.loads(response.text.splitlines()[-1])
+
+    model.side_effect = [assistant_step(text="可以核对"), TimeoutError()]
+    prior = await send(original)
+    assert prior["status"] == "completed"
+    failed = await send(change, prior["run_id"])
+    assert failed["status"] == "failed"
+
+    async def retry(messages, _definitions, _context):
+        instructions = [item["content"] for item in messages if item["role"] == "user"]
+        assert instructions == [original, change]
+        return assistant_step(text="已重新处理")
+
+    model.side_effect = retry
+    assert (await send(change, failed["run_id"]))["status"] == "completed"
+    checked = safety.check_input.await_args.args[0]["current_user_message"]
+    assert checked == f"{original}\n\n{change}"
+
+
 def test_lost_worker_lease_becomes_an_interruption_and_fences_old_events(tmp_path, monkeypatch):
     now = 1000
     monkeypatch.setattr("smhai_backend.domains.workspace_agent_history.time", lambda: now)

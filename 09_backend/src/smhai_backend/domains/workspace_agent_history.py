@@ -68,7 +68,7 @@ class WorkspaceHistory:
             events.append({"type": "end", "status": "interrupted", "run_id": row[1]})
         return events, active_run, revision
 
-    def acquire(self, owner: str) -> tuple[str, list[dict]]:
+    def acquire(self, owner: str, *, replaces: str | None = None) -> tuple[str, list[dict]]:
         if len(self.running) >= _MAX_CONCURRENT_RUNS:
             raise error(
                 ErrorCode.DEPENDENCY_UNAVAILABLE,
@@ -90,6 +90,8 @@ class WorkspaceHistory:
             events = json.loads(row[0]) if row else []
             if row and row[1]:
                 events.append({"type": "end", "status": "interrupted", "run_id": row[1]})
+            if replaces is not None and (not events or events[-1]["run_id"] != replaces):
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace run changed")
             run_id = uuid4().hex
             db.execute(
                 """INSERT INTO workspace_history VALUES (?, ?, ?, ?)

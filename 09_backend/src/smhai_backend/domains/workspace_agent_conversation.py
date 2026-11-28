@@ -132,6 +132,7 @@ _LOOKUP_REF_FIELDS = {
     "list_cat_drafts": ("drafts", "draft_ref"),
     "list_cat_handoffs": ("handoffs", "handoff_ref"),
 }
+_RUN_ID = r"^[0-9a-f]{32}$"
 
 
 class TurnRequest(BaseModel):
@@ -141,11 +142,12 @@ class TurnRequest(BaseModel):
     attachment: Literal["student_roster", "staff_roster", "cat_bank"] | None = None
     cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
     table_summary: WorkspaceTableSummary | None = None
+    replaces_run_id: str | None = Field(default=None, pattern=_RUN_ID)
 
 
 class CancelTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    run_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    run_id: str = Field(pattern=_RUN_ID)
 
 
 class FunctionCall(BaseModel):
@@ -213,12 +215,31 @@ def _proceed(check, candidate: str, actor: Actor) -> bool:
     )
 
 
-def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -> list[dict]:
+def _continuing_runs(history: list[dict], run_id: str | None) -> frozenset[str]:
+    starts = {item["run_id"]: item for item in history if item["type"] == "start"}
+    runs: list[str] = []
+    while run_id is not None and run_id not in runs:
+        runs.append(run_id)
+        run_id = starts.get(run_id, {}).get("replaces_run_id")
+    # Keep the original request and the latest edits within the Safety input limit.
+    return frozenset(runs[:4] + runs[-1:])
+
+
+def _context_messages(
+    actor: Actor, history: list[dict], payload: TurnRequest, continuing_runs: frozenset[str]
+) -> list[dict]:
     today = datetime.now(_CHINA).date().isoformat()
+    system = f"{_SYSTEM}\nRole: {actor.role.value}. Today is {today} (UTC+08:00)."
+    if continuing_runs:
+        system += (
+            "\nThe latest user message updates an existing task. Apply the new requirements and "
+            "retain unaffected requirements from the earlier messages. Work already delivered "
+            "can be read through tools. Refresh business facts before using them."
+        )
     messages = [
         {
             "role": "system",
-            "content": f"{_SYSTEM}\nRole: {actor.role.value}. Today is {today} (UTC+08:00).",
+            "content": system,
         }
     ]
     completed = {
@@ -235,15 +256,23 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
         for item in history
         if (
             item["type"] == "model_context"
-            and (item["tool"] != "save_markdown" or item["run_id"] in completed)
+            and (
+                item["tool"] != "save_markdown" or item["run_id"] in completed | continuing_runs
+            )
         )
         or (
             item["type"] in {"user", "answer"}
             and item.get("run_id") in completed
             and (item["type"] == "user" or item.get("run_id") not in lookup_runs)
         )
+        or (item["type"] == "user" and item["run_id"] in continuing_runs)
     ]
-    for item in previous[-12:]:
+    # Earlier accepted requirements in the active revision chain have priority over old replies.
+    for index, item in enumerate(previous):
+        if index < len(previous) - 12 and not (
+            item["type"] == "user" and item["run_id"] in continuing_runs
+        ):
+            continue
         if item["type"] == "model_context":
             tool = item["tool"]
             data = item["data"]
@@ -267,6 +296,10 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
                 }
             )
         else:
+            if item["type"] == "user" and (
+                item["run_id"], item["text"]
+            ) == (payload.replaces_run_id, payload.text):
+                continue
             messages.append(
                 {
                     "role": "assistant" if item["type"] == "answer" else "user",
@@ -287,10 +320,17 @@ def _context_messages(actor: Actor, history: list[dict], payload: TurnRequest) -
 async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list[dict]):
     context = current_request_context(request)
     container = request.app.state.container
-    local_context = _safety_context(actor, payload.text, context)
+    continuing_runs = _continuing_runs(prior, payload.replaces_run_id)
+    input_text = "\n\n".join([
+        *(item["text"] for item in prior
+          if item["type"] == "user" and item["run_id"] in continuing_runs
+          and (item["run_id"], item["text"]) != (payload.replaces_run_id, payload.text)),
+        payload.text,
+    ])
+    local_context = _safety_context(actor, input_text, context)
     yield {"type": "status", "status": "screening"}
     input_check = await container.safety.check_input(local_context, context)
-    if not _proceed(input_check, payload.text, actor):
+    if not _proceed(input_check, input_text, actor):
         log.info(
             "workspace_agent_screened",
             trace_id=context.trace_id,
@@ -310,8 +350,8 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
         return
 
     yield {"type": "user", "text": payload.text}
-    messages = _context_messages(actor, prior, payload)
-    documents = completed_workspace_documents(prior)
+    messages = _context_messages(actor, prior, payload, continuing_runs)
+    documents = completed_workspace_documents(prior, continuing_runs)
     read_documents: set[str] = set()
     available = {
         name: tool for name, tool in TOOLS.items()
@@ -770,7 +810,33 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
     container = request.app.state.container
     container.rate_limiter.check("support", actor.user_id)
     owner = _owner(actor)
-    run_id, prior = history.acquire(owner)
+    replaces = payload.replaces_run_id
+    if replaces is not None:
+        events, active, _revision = history.read(owner)
+        previous = [item for item in events or [] if item["run_id"] == replaces]
+        if (
+            not events
+            or (active or events[-1]["run_id"]) != replaces
+            or not any(
+                item["type"] == "user"
+                or (item["type"] == "start" and item.get("replaces_run_id"))
+                for item in previous
+            )
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace run changed")
+        if not (payload.attachment or payload.table_summary) and any(
+            item["type"] == "start"
+            and item.get("requires_attachment")
+            for item in previous
+        ):
+            raise error(ErrorCode.WORKFLOW_CONFLICT, detail="select the task attachment again")
+        if active:
+            task = history.running.get((owner, active))
+            if task is None:
+                raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace run is unavailable")
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    run_id, prior = history.acquire(owner, replaces=replaces)
     context = current_request_context(request)
     key = (owner, run_id)
     delivery: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -822,6 +888,7 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
         "type": "start",
         "trace_id": context.trace_id,
         "requires_attachment": payload.attachment is not None or payload.table_summary is not None,
+        **({"replaces_run_id": replaces} if replaces is not None else {}),
     })
     task = asyncio.create_task(execute())
     history.running[key] = task

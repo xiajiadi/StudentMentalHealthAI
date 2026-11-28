@@ -269,6 +269,52 @@ test('the teacher reopens and revises a generated Word document', async ({ page 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
+test('a teacher changes the requirements while a live task is running', async ({ page }) => {
+  test.setTimeout(190_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const rawProgress = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
+  expect(rawProgress.ok()).toBe(true)
+  const tasks = (await rawProgress.json()).data as { completed_count: number; active_enrollment_count: number }[]
+  const completions = tasks.reduce((sum, task) => sum + task.completed_count, 0)
+  const enrollments = tasks.reduce((sum, task) => sum + task.active_enrollment_count, 0)
+  const input = page.locator('#workspace-agent-input')
+  await input.fill('请为我核对本周班级测评进度，生成可编辑的 Word 班级测评进度简报。再查一下学习压力科普，给我一句提醒')
+  await page.getByRole('button', { name: '发送任务', exact: true }).click()
+  await page.getByRole('button', { name: '同意并发送' }).click()
+  const supplement = page.getByRole('button', { name: '发送补充', exact: true })
+  await expect(supplement).toBeVisible({ timeout: 35_000 })
+  await expect(input).toHaveValue('')
+  await input.fill('改一下，统计时间不限，学习压力的提醒先去掉，其他要求照旧')
+  const replacement = page.waitForResponse((response) => {
+    if (!response.url().endsWith('/workspace-agent/conversation/turn')) return false
+    return Boolean(response.request().postDataJSON()?.replaces_run_id)
+  }, { timeout: 40_000 })
+  await supplement.click()
+  const receipt = await replacement
+  expect(receipt.ok()).toBe(true)
+  const previous = receipt.request().postDataJSON().replaces_run_id
+  await expect(page.getByRole('button', { name: '取消任务' })).toHaveCount(0, { timeout: 130_000 })
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(history.ok()).toBe(true)
+  const { events } = (await history.json()).data
+  const previousEnd = events.find((event: { run_id: string; type: string }) => event.run_id === previous && event.type === 'end')
+  expect(previousEnd?.status).toBe('interrupted')
+  const last = events.at(-1)
+  expect(last?.status).toBe('completed')
+  const run = events.filter((event: { run_id: string }) => event.run_id === last.run_id)
+  expect(run[0].replaces_run_id).toBe(previous)
+  expect(run.some((event) => event.view?.kind === 'education_articles')).toBe(false)
+  const report = run.find((event) => event.view?.kind === 'class_progress')?.view
+  expect(report?.total).toBe(tasks.length)
+  expect(report?.artifact?.markdown).toContain(`已提交人次：${completions}\n`)
+  expect(report?.artifact?.markdown).toContain(`有效参测人次：${enrollments}\n`)
+  await page.reload()
+  await expect(page.getByText('补充要求', { exact: true }).last()).toBeVisible()
+  await expect(page.getByRole('button', { name: '下载班级统计 Word' }).last()).toBeVisible()
+})
+
 test('cancelling a live task releases the conversation and lets the teacher retry', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

@@ -107,7 +107,7 @@ export type WorkspaceAgentView =
   | { kind: 'workspace_document_index'; filenames: string[] }
 
 export type WorkspaceEvent = { run_id: string } & (
-  | { type: 'start'; trace_id: string; requires_attachment?: boolean }
+  | { type: 'start'; trace_id: string; requires_attachment?: boolean; replaces_run_id?: string }
   | { type: 'status'; status: 'screening' | 'model' | 'checking_response' }
   | { type: 'user' | 'answer'; text: string }
   | { type: 'tool_started'; label: string; call_id: string }
@@ -239,11 +239,13 @@ export async function sendWorkspaceTurn(
   signal: AbortSignal,
   catAttachmentRef?: string,
   tableSummary?: WorkspaceTableSummary,
+  replacesRunId?: string,
 ) {
   const response = await realApiProvider.requestWorkspaceConversation('turn', {
     text, synthetic_only: true, ...(attachment ? { attachment } : {}),
     ...(catAttachmentRef ? { cat_attachment_ref: catAttachmentRef } : {}),
     ...(tableSummary ? { table_summary: tableSummary } : {}),
+    ...(replacesRunId ? { replaces_run_id: replacesRunId } : {}),
   }, signal)
   if (!response.body) throw new Error('连接未返回会话数据')
   const reader = response.body.getReader()

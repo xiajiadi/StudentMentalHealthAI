@@ -26,8 +26,10 @@ def workspace_document_ref(run_id: str, call_id: str) -> str:
     return f"document-{digest[:16]}"
 
 
-def completed_workspace_documents(events: list[dict]) -> dict[str, WorkspaceDocument]:
-    completed = {
+def completed_workspace_documents(
+    events: list[dict], continuing_runs: frozenset[str] = frozenset()
+) -> dict[str, WorkspaceDocument]:
+    available_runs = continuing_runs | {
         event.get("run_id") for event in events
         if event.get("type") == "end" and event.get("status") == "completed"
     }
@@ -36,7 +38,7 @@ def completed_workspace_documents(events: list[dict]) -> dict[str, WorkspaceDocu
         run_id, call_id = event.get("run_id"), event.get("call_id")
         if (
             event.get("type") != "tool_result"
-            or run_id not in completed
+            or run_id not in available_runs
             or not isinstance(run_id, str)
             or not isinstance(call_id, str)
         ):
