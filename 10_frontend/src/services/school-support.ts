@@ -152,8 +152,10 @@ export const schoolSupport = {
       return {studentRef: text(row.student_ref), name: text(row.display_name, 120), classRef: text(row.class_ref)}
     }).items
   },
-  async cases(offset: number) {
-    return page(await read('/cases', {offset, limit: supportPageSize}), (item) => summary(record(item, caseFields)))
+  async cases(offset: number, triagedOnly = false) {
+    return page(await read('/cases', {
+      offset, limit: supportPageSize, ...(triagedOnly ? {triaged_only: 'true'} : {}),
+    }), (item) => summary(record(item, caseFields)))
   },
   async actions(offset: number) {
     return page(await read('/actions', {offset, limit: supportPageSize}), action)

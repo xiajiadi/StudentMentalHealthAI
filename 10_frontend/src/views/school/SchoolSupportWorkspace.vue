@@ -15,10 +15,11 @@ import {
   supportPageSize, supportRequestKey, type SupportAction, type SupportCase, type TeacherReferral,
 } from '@/services/school-support'
 
-const { audience, initialReferral, preparePlan } = defineProps<{
+const { audience, initialReferral, preparePlan, openLatestPlan } = defineProps<{
   audience: 'student' | 'teacher' | 'specialist'
   initialReferral?: TeacherReferral
   preparePlan?: boolean
+  openLatestPlan?: boolean
 }>()
 const session = useSessionStore()
 const router = useRouter()
@@ -68,6 +69,7 @@ const closeConfirmed = ref(false)
 const feedback = ref<Record<string, string>>({})
 const retry = ref<(() => void) | null>(null)
 const locked = computed(() => loading.value || detailLoading.value || busy.value || Boolean(retry.value))
+const planningOnly = computed(() => audience === 'specialist' && Boolean(openLatestPlan))
 const student = computed(() => students.value.find((entry) => JSON.stringify([entry.classRef, entry.studentRef]) === studentKey.value))
 const studentOptions = computed(() => students.value.map((entry) => ({
   value: JSON.stringify([entry.classRef, entry.studentRef]),
@@ -94,11 +96,11 @@ function checkSession(cause: unknown) {
   }
 }
 
-async function load() {
+async function load(selectLatest = false) {
   loading.value = true
   readError.value = ''
   const results = await Promise.allSettled([
-    schoolSupport.cases(offset.value),
+    schoolSupport.cases(offset.value, planningOnly.value),
     audience === 'specialist' ? Promise.resolve(null) : schoolSupport.actions(actionOffset.value),
     audience === 'teacher' ? schoolSupport.students() : Promise.resolve([]),
   ] as const)
@@ -114,6 +116,8 @@ async function load() {
     }
   }
   loading.value = false
+  const latest = cases.value?.items[0]
+  if (selectLatest && planningOnly.value && latest) await openCase(latest.caseRef)
 }
 
 async function openCase(ref: string) {
@@ -264,7 +268,7 @@ function isActionOpen(action: SupportAction) {
   return action.status === 'PENDING' || action.status === 'RETURNED'
 }
 
-onMounted(() => void load())
+onMounted(() => void load(true))
 onScopeDispose(() => { live = false })
 </script>
 
@@ -277,7 +281,7 @@ onScopeDispose(() => { live = false })
       <AppButton v-if="retry" variant="secondary" :disabled="busy" @click="retry?.()">使用同一请求重试</AppButton>
     </AppStatusCallout>
     <AppStatusCallout v-if="readError" tone="attention" title="部分记录无法读取" :body="readError">
-      <AppButton variant="secondary" :disabled="locked" @click="load">重新加载</AppButton>
+      <AppButton variant="secondary" :disabled="locked" @click="load(!selected && offset === 0)">重新加载</AppButton>
     </AppStatusCallout>
     <AppCard v-if="audience !== 'specialist'">
       <form class="school-support__panel" @submit.prevent="submit((key) => schoolSupport.create(category, content.trim(), key, student), () => { content = '' })">
@@ -300,8 +304,8 @@ onScopeDispose(() => { live = false })
     </AppCard>
     <AppCard>
       <section class="school-support__panel">
-        <h2>支持请求</h2>
-        <p v-if="audience === 'specialist' && preparePlan">选择一条授权请求。受理后可根据该请求准备可编辑的草案</p>
+        <h2>{{ planningOnly ? '我已受理的请求' : '支持请求' }}</h2>
+        <p v-if="audience === 'specialist' && preparePlan && !planningOnly">选择一条授权请求。受理后可根据该请求准备可编辑的草案</p>
         <p v-if="loading" role="status">正在读取支持请求。</p>
         <ul v-else-if="cases?.items.length">
           <li v-for="item in cases.items" :key="item.caseRef">
@@ -310,7 +314,7 @@ onScopeDispose(() => { live = false })
             </AppButton>
           </li>
         </ul>
-        <p v-else-if="cases">当前页没有支持请求。</p>
+        <p v-else-if="cases">{{ planningOnly && !offset ? '当前没有已受理且待制定计划的请求' : '当前页没有支持请求' }}</p>
         <div v-if="offset || (cases?.total ?? 0) > supportPageSize" class="school-support__actions">
           <AppButton variant="secondary" :disabled="locked || !offset" @click="offset -= supportPageSize; selectCase(''); load()">上一页支持请求</AppButton>
           <AppButton variant="secondary" :disabled="locked || offset + supportPageSize >= (cases?.total ?? 0)" @click="offset += supportPageSize; selectCase(''); load()">下一页支持请求</AppButton>

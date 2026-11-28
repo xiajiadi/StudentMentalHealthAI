@@ -81,6 +81,7 @@ export type WorkspaceAgentView =
   | { kind: 'cat_drafts' | 'cat_handoffs'; drafts: CatDraft[] }
   | ({ kind: 'teacher_referral' } & TeacherReferral)
   | { kind: 'teacher_support_status' | 'specialist_support_status' | 'specialist_support_plan'; total: number; shown: number; counts: Partial<Record<CaseStatus, number>> }
+  | { kind: 'latest_specialist_support_plan'; triaged_count: number }
   | {
     kind: 'professional_review_queue'
     task_count: number

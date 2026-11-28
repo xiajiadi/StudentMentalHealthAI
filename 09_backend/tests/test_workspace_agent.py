@@ -1101,7 +1101,10 @@ async def test_task_feedback_returns_only_the_published_reference_for_the_studen
     model.assert_not_awaited()
 
 
-async def test_support_plan_tool_only_exposes_workflow_totals(client, app, model_lane, monkeypatch):
+@pytest.mark.parametrize("latest", [False, True])
+async def test_support_plan_tool_only_exposes_workflow_totals(
+    client, app, model_lane, monkeypatch, latest,
+):
     model, _ = model_lane
     support = SimpleNamespace(list_cases=AsyncMock(return_value={
         "items": [{
@@ -1123,11 +1126,15 @@ async def test_support_plan_tool_only_exposes_workflow_totals(client, app, model
         available = {item["function"]["name"] for item in definitions}
         assert "prepare_specialist_support_plan" in available
         if messages[-1]["role"] == "tool":
-            assert json.loads(messages[-1]["content"]) == {
+            expected = {"triaged_count": 1} if latest else {
                 "shown": 1, "total": 1, "counts": {"TRIAGED": 1},
             }
+            assert json.loads(messages[-1]["content"]) == expected
             return assistant_step(text="可进一步核对这项支持请求")
-        return assistant_step(tool="prepare_specialist_support_plan")
+        return assistant_step(
+            tool="prepare_specialist_support_plan",
+            arguments='{"selection":"latest_triaged"}' if latest else "{}",
+        )
 
     model.side_effect = step
     response = await client.post(
@@ -1135,11 +1142,17 @@ async def test_support_plan_tool_only_exposes_workflow_totals(client, app, model
         json={"text": "为授权支持请求准备一份可确认的计划草案", "synthetic_only": True},
     )
     assert response.status_code == 200
-    assert "specialist_support_plan" in response.text
+    events = [json.loads(line) for line in response.text.splitlines()]
+    view = next(event["view"] for event in events if event["type"] == "tool_result")
+    kind = "latest_specialist_support_plan" if latest else "specialist_support_plan"
+    assert view["kind"] == kind
     assert "SSC_" not in response.text
     assert "PEER_RELATION" not in response.text
     support.list_cases.assert_awaited_once()
     assert support.list_cases.await_args.args[0].school_ref == FIRST
+    assert support.list_cases.await_args.kwargs == (
+        {"limit": 1, "triaged_only": True} if latest else {"limit": 50}
+    )
 
 
 @pytest.mark.parametrize("formula", ("", "x^2 + \ufffd", r"\frac{1}{2", "a\nb", r"x^2 + \ · 3"))

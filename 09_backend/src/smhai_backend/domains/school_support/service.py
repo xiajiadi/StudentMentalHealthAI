@@ -233,7 +233,9 @@ class SchoolSupportService:
         )
         return self._project(SupportCaseReceiptDto, row)
 
-    async def list_cases(self, actor: Actor, *, offset: int = 0, limit: int = 20):
+    async def list_cases(
+        self, actor: Actor, *, offset: int = 0, limit: int = 20, triaged_only: bool = False,
+    ):
         self._require_school_actor(
             actor,
             BackendRole.STUDENT,
@@ -241,7 +243,13 @@ class SchoolSupportService:
             BackendRole.PSYCHOLOGICAL_SPECIALIST,
         )
         self._pagination(offset, limit)
-        result = await self._port().support_list_cases(actor, offset=offset, limit=limit)
+        if triaged_only:
+            self._require_school_actor(actor, BackendRole.PSYCHOLOGICAL_SPECIALIST)
+            result = await self._port().support_list_cases(
+                actor, offset=offset, limit=limit, triaged_only=True,
+            )
+        else:
+            result = await self._port().support_list_cases(actor, offset=offset, limit=limit)
         return self._project_page(
             SupportCasePageDto, SupportCaseSummaryDto, result, limit=limit
         )

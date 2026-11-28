@@ -918,13 +918,15 @@ class SchoolSupportPersistenceAdapter:
             return self._summary(case)
 
     async def support_list_cases(
-        self, actor: Any, *, offset: int, limit: int
+        self, actor: Any, *, offset: int, limit: int, triaged_only: bool = False
     ) -> dict[str, Any]:
         from sqlalchemy import and_, exists, func, or_, select
 
         now = self._utc_now()
         async with self._uow() as uow:
             m = self._db_models
+            if triaged_only and actor.role is not BackendRole.PSYCHOLOGICAL_SPECIALIST:
+                raise error(ErrorCode.FORBIDDEN, detail="specialist role required")
             if actor.role is BackendRole.TEACHER:
                 _account_id, role_id = await self._require_actor(uow, actor, "teacher", now)
                 class_ids = await self._teacher_class_ids(uow, role_id, now)
@@ -970,6 +972,12 @@ class SchoolSupportPersistenceAdapter:
                         m.SchoolSupportCase.owner_membership_role_id == role_id,
                     ),
                 )
+                if triaged_only:
+                    condition = and_(
+                        m.SchoolSupportCase.school_id == actor.school_id,
+                        m.SchoolSupportCase.owner_membership_role_id == role_id,
+                        m.SchoolSupportCase.status == "TRIAGED",
+                    )
             total = await uow.session.scalar(
                 self._select(func.count()).select_from(m.SchoolSupportCase).where(condition)
             )
@@ -979,7 +987,10 @@ class SchoolSupportPersistenceAdapter:
                         self._select(m.SchoolSupportCase)
                         .where(condition)
                         .order_by(
-                            m.SchoolSupportCase.created_at.desc(),
+                            (
+                                m.SchoolSupportCase.updated_at.desc()
+                                if triaged_only else m.SchoolSupportCase.created_at.desc()
+                            ),
                             m.SchoolSupportCase.id.desc(),
                         )
                         .limit(limit)

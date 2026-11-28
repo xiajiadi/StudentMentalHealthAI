@@ -85,6 +85,7 @@ const rosterWorkbench = ref<{ busy: boolean }>()
 const feedbackRef = ref<string>()
 const feedbackTaskRef = ref<string>()
 const prepareSupportPlan = ref(false)
+const latestSupportPlanKey = ref<string>()
 const reviewTaskRef = ref<string>()
 const libraryFile = ref<File>()
 const libraryImport = ref(false)
@@ -339,6 +340,7 @@ function openPanel(workflow?: WorkflowPanel | RosterPanel) {
   feedbackRef.value = undefined
   feedbackTaskRef.value = undefined
   prepareSupportPlan.value = false
+  latestSupportPlanKey.value = undefined
   reviewTaskRef.value = undefined
   libraryFile.value = undefined
   libraryImport.value = false
@@ -363,9 +365,10 @@ function openTaskFeedback() {
   feedbackTaskRef.value = assessmentTask.value
 }
 
-function openSupportPlan() {
+function openSupportPlan(latestKey?: string) {
   openPanel('support')
   prepareSupportPlan.value = true
+  latestSupportPlanKey.value = latestKey
 }
 
 function openReviewTask(taskRef: string) {
@@ -629,8 +632,13 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <ul v-if="event.view.shown" class="agent-thread__rows">
               <li v-for="(count, status) in event.view.counts" :key="status">{{ supportCaseStates[status] }} · {{ count }} 项</li>
             </ul>
-            <AppButton v-if="event.view.kind === 'specialist_support_plan'" variant="secondary" @click="openSupportPlan">打开支持计划草案</AppButton>
+            <AppButton v-if="event.view.kind === 'specialist_support_plan'" variant="secondary" @click="openSupportPlan()">打开支持计划草案</AppButton>
             <AppButton v-else variant="secondary" @click="openPanel('support')">查看支持记录</AppButton>
+          </template>
+          <template v-else-if="event.view.kind === 'latest_specialist_support_plan'">
+            <strong>已受理且待制定计划 · {{ event.view.triaged_count }} 项</strong>
+            <AppButton v-if="event.view.triaged_count" variant="secondary" @click="openSupportPlan(event.run_id + ':' + event.call_id)">打开最近受理的请求</AppButton>
+            <AppButton v-else variant="secondary" @click="openSupportPlan()">查看支持请求</AppButton>
           </template>
           <template v-else-if="event.view.kind === 'professional_review_queue'">
             <strong>已建复核记录 · {{ event.view.open_count + event.view.in_review_count }} 项待处理</strong>
@@ -731,7 +739,7 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
         </form>
         <component :is="panels.library" ref="schoolLibrary" v-model:show-import="libraryImport" :show-results="true" :show-empty="true" :initial-file="libraryFile" />
       </template>
-      <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft, preparePlan: prepareSupportPlan } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
+      <component :is="latestPanel" v-else-if="latestPanel" :key="panel === 'support' ? referral?.key || latestSupportPlanKey || panel : panel" v-bind="panel === 'support' ? { audience, initialReferral: referral?.draft, preparePlan: prepareSupportPlan, openLatestPlan: Boolean(latestSupportPlanKey) } : panel === 'cat' ? { initialBankFile: catFile } : {}" />
     </AppCard>
   </section>
   <AppDialog :open="consentOpen" title="合成学校智能体" description="通过安全检查的消息会用于 DeepSeek 推理。请使用虚构内容，名单请作为文件添加" @update:open="(open) => { if (!open) decideConsent(false) }">

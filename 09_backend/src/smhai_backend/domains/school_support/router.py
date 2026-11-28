@@ -112,9 +112,17 @@ async def list_cases(
     actor: CurrentActor,
     offset: int = Query(default=0, ge=0, le=100_000),
     limit: int = Query(default=20, ge=1, le=50),
+    triaged_only: bool = Query(default=False),
 ):
+    service = _service(request)
+    if triaged_only:
+        response = _response(
+            request, await service.list_cases(actor, offset=offset, limit=limit, triaged_only=True)
+        )
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     return _response(
-        request, await _service(request).list_cases(actor, offset=offset, limit=limit)
+        request, await service.list_cases(actor, offset=offset, limit=limit)
     )
 
 

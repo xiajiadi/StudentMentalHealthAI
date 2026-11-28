@@ -57,6 +57,10 @@ class PublishedFeedbackSelection(Arguments):
     selection: str = Field(pattern=r"^(latest|feedback-[a-f0-9]{12})$")
 
 
+class SupportPlanSelection(Arguments):
+    selection: Literal["choose", "latest_triaged"] = "choose"
+
+
 class EducationTopics(Arguments):
     topics: list[EducationTopic] = Field(min_length=1, max_length=3)
 
@@ -221,10 +225,12 @@ TOOLS = {
     "prepare_specialist_support_plan": Tool(
         "准备专业支持计划草案",
         "Check current authorized school support requests and prepare a private draft workbench. "
-        "Use for requests to draft or arrange an individual support plan. The specialist selects "
-        "the case, checks facts and missing evidence, edits and confirms any plan. Never infer a "
-        "mental health finding, treatment, or risk from case status or referral category.",
+        "Use for requests to draft or arrange an individual support plan. Set latest_triaged only "
+        "if the specialist asks for the most recently accepted case; otherwise use choose. The "
+        "specialist checks the case and evidence privately, edits and confirms any plan. Never "
+        "infer mental health findings, treatment, or risk from workflow states.",
         (SPECIALIST,),
+        SupportPlanSelection,
     ),
     "inspect_school_library": Tool(
         "核对本校资料库",
@@ -509,6 +515,15 @@ async def execute_tool(
     }:
         if container.school_support is None:
             raise error(ErrorCode.DEPENDENCY_UNAVAILABLE, detail="school support is unavailable")
+        if isinstance(arguments, SupportPlanSelection) and arguments.selection == "latest_triaged":
+            page = SupportCasePageDto.model_validate(
+                await container.school_support.list_cases(actor, limit=1, triaged_only=True)
+            )
+            summary = {"triaged_count": page.total}
+            return (
+                {"kind": "latest_specialist_support_plan", **summary},
+                summary,
+            )
         page = SupportCasePageDto.model_validate(
             await container.school_support.list_cases(actor, limit=50)
         )

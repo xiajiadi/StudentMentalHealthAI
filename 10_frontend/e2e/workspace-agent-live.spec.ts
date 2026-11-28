@@ -1807,7 +1807,7 @@ test('a specialist sees real pending review counts and opens the assigned task f
 
 test('a specialist reviews facts and saves an authorized synthetic support plan', async ({ page }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
-  test.setTimeout(200_000)
+  test.setTimeout(260_000)
   await signIn(page)
   let expectedFeedback
   let feedbackScope
@@ -1827,6 +1827,8 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   }
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const support = '/api/v1/school/support'
+  const triagedCases = support + '/cases?triaged_only=true&limit=1'
+  expect((await page.request.get(origin + triagedCases)).status()).toBe(403)
   const resumeTriaged = process.env.PSYNOVA_AGENT_QA_TRIAGED_SUPPORT_REF
   const replay = resumeTriaged ?? process.env.PSYNOVA_AGENT_QA_UNCLAIMED_SUPPORT_REF
   let item
@@ -1877,6 +1879,23 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
     expect((await (await triaged).json()).data.status).toBe('TRIAGED')
   }
   await expect(page.getByText(observation, { exact: true })).toBeVisible()
+  if (!resumeTriaged) {
+    const authorized = await page.request.get(origin + triagedCases)
+    expect(authorized.ok()).toBe(true)
+    expect(authorized.headers()['cache-control']).toContain('no-store')
+    const { total, items } = (await authorized.json()).data
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ case_ref: item.case_ref, status: 'TRIAGED' })
+    const followup = await ask(page, '刚才受理的那一条是最新的。请打开我最近受理、还在等制定计划的支持请求，为它准备草案', '发送任务')
+    expect(followup.find((event) => event.view?.kind === 'latest_specialist_support_plan')?.view)
+      .toEqual({ kind: 'latest_specialist_support_plan', triaged_count: total })
+    const serialized = JSON.stringify(followup)
+    expect(serialized).not.toContain(item.case_ref)
+    expect(serialized).not.toContain(observation)
+    await page.reload()
+    await page.getByRole('button', { name: '打开最近受理的请求' }).last().click()
+    await expect(page.getByText(observation, { exact: true })).toBeVisible()
+  }
   if (expectedFeedback) {
     const pendingEvidence = page.waitForResponse((response) => response.url().endsWith(evidencePath))
     await page.getByRole('button', { name: '核对已发布测评反馈' }).click()
@@ -1931,8 +1950,12 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   expect(changes).toHaveLength(1)
   const check = await page.request.get(origin + casePath)
   expect((await check.json()).data).toMatchObject({ status: 'PLANNED', plan: final })
+  const pendingPlans = await page.request.get(origin + triagedCases)
+  expect(pendingPlans.ok()).toBe(true)
+  expect(JSON.stringify((await pendingPlans.json()).data)).not.toContain(item.case_ref)
   const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
   const serialized = await history.text()
+  expect(serialized).not.toContain(item.case_ref)
   expect(serialized).not.toContain(observation)
   expect(serialized).not.toContain('合成验证补充')
   if (expectedFeedback) {
