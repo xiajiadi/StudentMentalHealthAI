@@ -13,8 +13,12 @@ from zipfile import ZipFile
 import pytest
 from pwdlib import PasswordHash
 
-from smhai_backend.core.errors import BackendError
-from smhai_backend.domains import workspace_agent_feedback_guide, workspace_agent_formula
+from smhai_backend.core.errors import BackendError, ErrorCode, error
+from smhai_backend.domains import (
+    workspace_agent_conversation,
+    workspace_agent_feedback_guide,
+    workspace_agent_formula,
+)
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
 from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
 from smhai_backend.domains.school_research_sources import library
@@ -369,6 +373,86 @@ async def test_a_single_verified_result_can_finish_without_generated_text(
     safety.check_output.assert_not_awaited()
 
 
+@pytest.mark.parametrize("outage", [False, True])
+async def test_workspace_retries_a_read_and_reports_an_unresolved_dependency(
+    client, tools, model_lane, outage,
+):
+    model, safety = model_lane
+    path = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    progress = assistant_step(tool="class_progress", arguments='{"finish_with_result":true}')
+    tools.teacher_progress.side_effect = [
+        TimeoutError(),
+        (
+            error(ErrorCode.DEPENDENCY_TIMEOUT, retryable=True, detail="PRIVATE_SERVICE_MESSAGE")
+            if outage else tools.teacher_progress.return_value
+        ),
+        tools.teacher_progress.return_value,
+    ]
+
+    async def model_step(messages, _definitions, _context):
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"]) == {"error": "dependency_timeout"}
+            if sum(message["role"] == "tool" for message in messages) == 1:
+                return assistant_step(tool="class_progress")
+            return assistant_step(text="已核对，编造的数字")
+        return progress
+
+    model.side_effect = model_step
+    payload = {"text": "查当前班级的测评进度", "synthetic_only": True}
+    response = await client.post(f"{path}/turn", headers=headers, json=payload)
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert tools.teacher_progress.await_count == 2
+    assert all(call.args[0].school_ref == FIRST for call in tools.teacher_progress.await_args_list)
+    assert "PRIVATE_SERVICE_MESSAGE" not in response.text
+    assert not any(event["type"] == "answer" for event in events)
+    safety.check_output.assert_not_awaited()
+    if not outage:
+        assert events[-1]["status"] == "completed"
+        assert len([event for event in events if event["type"] == "tool_result"]) == 1
+        model.assert_awaited_once()
+        return
+
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["code"] == "dependency_timeout"
+    assert [event["type"] for event in events].count("tool_failed") == 2
+    assert not any(event["type"] == "tool_result" for event in events)
+    history = (await client.get(path)).json()["data"]
+    assert history["active_run_id"] is None
+    assert history["events"][-1] == events[-1]
+    retry = await client.post(f"{path}/turn", headers=headers, json=payload)
+    retried = [json.loads(line) for line in retry.text.splitlines()]
+    assert retried[-1]["status"] == "completed"
+    assert retried[-1]["run_id"] != events[-1]["run_id"]
+    assert any(event.get("view", {}).get("kind") == "class_progress" for event in retried)
+    assert tools.teacher_progress.await_count == 3
+
+
+async def test_workspace_does_not_repeat_a_preview_after_dependency_failure(
+    client, model_lane, monkeypatch,
+):
+    model, _safety = model_lane
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    invoke = AsyncMock(side_effect=TimeoutError())
+    monkeypatch.setattr(workspace_agent_conversation, "execute_tool", invoke)
+    model.return_value = assistant_step(
+        tool="preview_new_class", arguments='{"class_ref":"DEMO-CLASS"}',
+    )
+    response = await client.post(
+        f"{BASE}/conversation/turn", headers=headers,
+        json={"text": "预览一个合成班级", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["status"] == "failed"
+    assert events[-1]["code"] == "dependency_timeout"
+    invoke.assert_awaited_once()
+    assert not any(event["type"] == "tool_result" for event in events)
+
+
 async def test_direct_result_flag_cannot_end_a_group_of_tool_calls(client, model_lane):
     model, safety = model_lane
     progress = assistant_step(tool="class_progress", arguments='{"finish_with_result":true}')
@@ -482,15 +566,22 @@ async def test_only_the_owner_can_cancel_active_task_and_timeout_allows_new_turn
             delivery.cancel()
             await asyncio.gather(delivery, return_exceptions=True)
 
-    model.side_effect = [TimeoutError(), assistant_step(text="已重新处理")]
+    model.side_effect = [
+        TimeoutError(), assistant_step(tool="read_system_health"),
+        assistant_step(text="状态见系统检查结果"),
+    ]
     failed = await client.post(f"{path}/turn", headers=headers, json=payload)
     terminal = json.loads(failed.text.splitlines()[-1])
     assert terminal["status"] == "failed"
     assert terminal["code"] == "dependency_timeout"
     retry = await client.post(f"{path}/turn", headers=headers, json=payload)
-    complete = json.loads(retry.text.splitlines()[-1])
+    retried_events = [json.loads(line) for line in retry.text.splitlines()]
+    complete = retried_events[-1]
     assert complete["status"] == "completed"
     assert complete["run_id"] != terminal["run_id"]
+    result = next(event["view"] for event in retried_events if event["type"] == "tool_result")
+    assert result["kind"] == "system_health"
+    assert result["statuses"]
     assert (await client.get(path)).json()["data"]["active"] is False
 
 

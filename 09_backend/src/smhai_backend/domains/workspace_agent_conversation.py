@@ -74,6 +74,7 @@ finish_with_result=true if the selected tool supports it. Leave it false for req
 need another operation, a separate output, analysis, explanation or clarification.
 If access is denied or a tool fails, use the returned error code to correct the request or explain
 the dependency. Do not retry the same failed arguments. Ask for missing details when necessary.
+School data that could not be read is unverified. Keep any separately verified results distinct.
 Never choose an assessment answer or infer mental health from completion rates. For students
 asking about their school feedback, use list_published_feedback or open_published_feedback.
 Offer the private reading interface. When a student wants help understanding a specific
@@ -146,6 +147,15 @@ _LOOKUP_REF_FIELDS = {
     "list_cat_handoffs": ("handoffs", "handoff_ref"),
 }
 _CLASS_PROGRESS_TOOLS = {"class_progress", "make_class_progress_report"}
+_RETRYABLE_READ_TOOLS = {
+    "class_progress", "inspect_school_library", "list_published_feedback",
+    "list_student_assessments",
+    "make_class_progress_report", "open_published_feedback", "open_student_assessment",
+    "professional_review_queue", "read_school_audit", "read_system_health", "review_tasks",
+    "school_student_counts", "school_tasks",
+}
+_TRANSIENT_READ_ERRORS = {ErrorCode.DEPENDENCY_TIMEOUT, ErrorCode.DEPENDENCY_UNAVAILABLE}
+_READ_DEPENDENCY_ERRORS = _TRANSIENT_READ_ERRORS | {ErrorCode.DEPENDENCY_INVALID_RESPONSE}
 _DIRECT_RESULT_KINDS = {
     "list_student_assessments": "student_tasks",
     "class_progress": "class_progress",
@@ -349,6 +359,41 @@ def _context_messages(
     return messages
 
 
+async def _call_workspace_tool(
+    request: Request, actor: Actor, name: str, arguments: BaseModel,
+    run_id: str, payload: TurnRequest,
+):
+    for attempt in range(2):
+        try:
+            return await execute_tool(
+                request,
+                actor,
+                name,
+                arguments,
+                run_id=run_id,
+                cat_attachment_ref=payload.cat_attachment_ref,
+                table_summary=payload.table_summary,
+            )
+        except (BackendError, TimeoutError) as exc:
+            if name not in _RETRYABLE_READ_TOOLS:
+                raise
+            if isinstance(exc, TimeoutError):
+                code = ErrorCode.DEPENDENCY_TIMEOUT
+                if attempt:
+                    raise error(code, retryable=True) from exc
+            else:
+                code = exc.code
+                if attempt or code not in _TRANSIENT_READ_ERRORS or not exc.retryable:
+                    raise
+            log.info(
+                "workspace_agent_read_retry",
+                trace_id=current_request_context(request).trace_id,
+                tool=name,
+                error_code=code.value,
+            )
+            await asyncio.sleep(0.2)
+
+
 async def _run(
     request: Request, actor: Actor, payload: TurnRequest, prior: list[dict], run_id: str
 ):
@@ -392,6 +437,7 @@ async def _run(
     messages = _context_messages(actor, prior, payload, continuing_runs)
     documents = completed_workspace_documents(prior, continuing_runs)
     read_documents: set[str] = set()
+    unavailable_reads: dict[tuple[str, str], ErrorCode] = {}
     unresolved_class_selection = False
     available = {
         name: tool for name, tool in TOOLS.items()
@@ -421,6 +467,10 @@ async def _run(
                 latency_ms=round((perf_counter() - requested_at) * 1000),
             )
             if not step.message.tool_calls:
+                if unavailable_reads:
+                    code = next(reversed(unavailable_reads.values()))
+                    yield {"type": "end", "status": "failed", "code": code.value}
+                    return
                 answer = (step.message.content or "").strip()
                 if not answer:
                     raise error(
@@ -462,11 +512,16 @@ async def _run(
                 tool = available.get(name)
                 model_data: dict
                 direct_result = False
+                read_key: tuple[str, str] | None = None
                 called_at = perf_counter()
                 try:
                     if tool is None:
                         raise error(ErrorCode.FORBIDDEN, detail="tool is unavailable")
                     arguments = tool.args.model_validate_json(call.function.arguments, strict=True)
+                    if name in _RETRYABLE_READ_TOOLS:
+                        read_key = (name, arguments.model_dump_json(exclude={"finish_with_result"}))
+                        if read_key in unavailable_reads:
+                            raise error(unavailable_reads[read_key])
                     if (
                         unresolved_class_selection and isinstance(arguments, TaskWindow)
                         and arguments.class_designation is None
@@ -537,14 +592,8 @@ async def _run(
                             )
                             if not _proceed(check, candidate, actor):
                                 raise error(ErrorCode.FORBIDDEN, detail="document requires review")
-                        view, model_data = await execute_tool(
-                            request,
-                            actor,
-                            name,
-                            arguments,
-                            run_id=run_id,
-                            cat_attachment_ref=payload.cat_attachment_ref,
-                            table_summary=payload.table_summary,
+                        view, model_data = await _call_workspace_tool(
+                            request, actor, name, arguments, run_id, payload,
                         )
                     if view["kind"] == "teacher_progress_class_choice":
                         unresolved_class_selection = True
@@ -553,6 +602,7 @@ async def _run(
                         and isinstance(arguments, DirectResult)
                         and arguments.finish_with_result
                         and _DIRECT_RESULT_KINDS.get(name) == view["kind"]
+                        and not unavailable_reads
                     )
                     # Keep the rendered role-specific details local, including browser-only tokens.
                     yield {
@@ -573,6 +623,12 @@ async def _run(
                 except (BackendError, ValidationError) as exc:
                     code = exc.code.value if isinstance(exc, BackendError) else "VALIDATION_FAILED"
                     model_data = {"error": code}
+                    if (
+                        isinstance(exc, BackendError)
+                        and read_key is not None
+                        and exc.code in _READ_DEPENDENCY_ERRORS
+                    ):
+                        unavailable_reads[read_key] = exc.code
                     if isinstance(exc, ValidationError) and tool is not None:
                         model_data["invalid_fields"] = [
                             item["loc"][0]
@@ -630,7 +686,11 @@ async def _run(
                         "content": json.dumps(model_data, ensure_ascii=False),
                     }
                 )
-    yield {"type": "end", "status": "step_limit"}
+    if unavailable_reads:
+        code = next(reversed(unavailable_reads.values()))
+        yield {"type": "end", "status": "failed", "code": code.value}
+    else:
+        yield {"type": "end", "status": "step_limit"}
 
 
 def _public_event(event: dict, available_attachments: set[str]) -> dict:
