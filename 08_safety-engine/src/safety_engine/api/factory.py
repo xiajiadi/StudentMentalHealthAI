@@ -52,7 +52,9 @@ def build_default_bundle(*, root: Path | None = None) -> RuntimeBundle:
         privacy=PresidioPrivacyAdapter(),
         nemo=NemoIORailsAdapter(root / "config" / "nemo"),
         qwen=Qwen3GuardProvider(
-            cache_dir=qwen_cache, accelerate_cpu=os.environ.get("SMHAI_QWEN_ACCELERATED_CPU") == "1"
+            cache_dir=qwen_cache,
+            accelerate_cpu=os.environ.get("SMHAI_QWEN_ACCELERATED_CPU") == "1",
+            serialize_cpu_checks=os.environ.get("SMHAI_QWEN_SERIAL_CPU") == "1",
         ),
         policy=policy,
         review=HumanReviewService(repository),

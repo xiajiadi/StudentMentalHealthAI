@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -82,9 +83,15 @@ def create_app(
                 app.state.opa_start_error = None
             except SafetyError as exc:
                 app.state.opa_start_error = exc.code.value
-        yield
-        if manager:
-            manager.stop()
+        try:
+            yield
+        finally:
+            if manager:
+                manager.stop()
+            if use_default_bundle and bundle:
+                close_guard = getattr(bundle.service.qwen, "close", None)
+                if callable(close_guard):
+                    await asyncio.to_thread(close_guard)
 
     app = FastAPI(
         title="StudentMentalHealthAI Safety Control Plane",

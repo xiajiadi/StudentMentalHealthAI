@@ -27,6 +27,7 @@ Environment=TRANSFORMERS_OFFLINE=1
 Environment=TOKENIZERS_PARALLELISM=false
 Environment=OMP_NUM_THREADS=2
 Environment=MKL_NUM_THREADS=2
+Environment=SMHAI_QWEN_SERIAL_CPU=1
 Environment=HOME=/var/lib/psynova-school-safety
 StateDirectory=psynova-school-safety
 StateDirectoryMode=0750

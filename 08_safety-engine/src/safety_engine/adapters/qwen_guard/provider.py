@@ -13,6 +13,8 @@ import importlib.metadata
 import logging
 import re
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,6 +56,7 @@ class Qwen3GuardProvider:
         device: str = "cpu",
         max_new_tokens: int = 128,
         accelerate_cpu: bool = False,
+        serialize_cpu_checks: bool = False,
     ) -> None:
         self.model_name = model_name
         self.revision = revision
@@ -72,6 +75,15 @@ class Qwen3GuardProvider:
             and revision == DEFAULT_REVISION and device == "cpu"
         )
         self._fixed_prefixes: dict[str, tuple[Any, Any, tuple[int, ...]]] = {}
+        # Each inference already uses the service's configured CPU threads.
+        self._executor = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="qwen-safety")
+            if serialize_cpu_checks and device == "cpu" else None
+        )
+
+    def close(self) -> None:
+        if self._executor is not None:
+            self._executor.shutdown(wait=True, cancel_futures=True)
 
     def load(self) -> ComponentHealth:
         """Load the pinned local checkpoint and return its readiness state."""
@@ -191,14 +203,19 @@ class Qwen3GuardProvider:
         )
 
     async def classify_input(self, text: str, *, trace_id: str) -> AdapterResult:
-        return await asyncio.to_thread(self._classify_and_signal, text, trace_id, "input")
+        return await self._submit(self._classify_and_signal, text, trace_id, "input")
 
     async def classify_response(
         self, user_message: str, candidate: str, *, trace_id: str
     ) -> AdapterResult:
-        return await asyncio.to_thread(
+        return await self._submit(
             self._classify_response_and_signal, user_message, candidate, trace_id
         )
+
+    async def _submit(self, classify: Callable[..., AdapterResult], *args: str) -> AdapterResult:
+        if self._executor is None:
+            return await asyncio.to_thread(classify, *args)
+        return await asyncio.get_running_loop().run_in_executor(self._executor, classify, *args)
 
     async def classify_output(
         self, user_message: str, candidate: str, *, trace_id: str
