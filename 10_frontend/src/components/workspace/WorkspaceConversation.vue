@@ -677,10 +677,20 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary })
             <AppButton variant="secondary" @click="openPanel('system')">查看系统详情</AppButton>
           </template>
           <AppButton v-else-if="event.view.kind === 'workflow'" variant="secondary" @click="openPanel(event.view.workflow)">打开{{ panelLabels[event.view.workflow] }}</AppButton>
-          <div v-else-if="event.view.kind === 'markdown'" class="agent-thread__inline">
-            <AppButton variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
-            <AppButton variant="secondary" :disabled="wordExporting" @click="downloadWord(event.view.filename, event.view.markdown)">下载 Word · {{ event.view.filename.replace(/\.md$/i, '') }}</AppButton>
-          </div>
+          <template v-else-if="event.view.kind === 'markdown'">
+            <small v-if="event.view.previous_filename">修订自 {{ event.view.previous_filename }}</small>
+            <div class="agent-thread__inline">
+              <AppButton variant="secondary" @click="download(event.view.filename, event.view.markdown)">下载 {{ event.view.filename }}</AppButton>
+              <AppButton variant="secondary" :disabled="wordExporting" @click="downloadWord(event.view.filename, event.view.markdown)">下载 Word · {{ event.view.filename.replace(/\.md$/i, '') }}</AppButton>
+            </div>
+          </template>
+          <p v-else-if="event.view.kind === 'workspace_document_read'">已读取 {{ event.view.filename }}</p>
+          <template v-else-if="event.view.kind === 'workspace_document_index'">
+            <ul v-if="event.view.filenames.length" class="agent-thread__rows" aria-label="本会话生成的文档">
+              <li v-for="(filename, versionIndex) in event.view.filenames" :key="versionIndex">{{ filename }}</li>
+            </ul>
+            <p v-else>当前会话暂无可继续编辑的文档</p>
+          </template>
         </AppCard>
         <p v-else-if="event.type === 'tool_failed'" class="agent-thread__problem">{{ event.label }}未完成 · {{ event.code }}</p>
         <AppStatusCallout v-else-if="event.type === 'safety'" tone="attention" :title="event.text || '本条消息或回复需要额外的安全检查'">

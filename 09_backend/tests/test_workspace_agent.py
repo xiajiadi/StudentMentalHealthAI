@@ -18,6 +18,10 @@ from smhai_backend.domains import workspace_agent_feedback_guide, workspace_agen
 from smhai_backend.domains.models import BackendRole, SchoolRoleContext, SyntheticUser
 from smhai_backend.domains.school_operations_audit.service import SchoolOperationsAuditService
 from smhai_backend.domains.school_research_sources import library
+from smhai_backend.domains.workspace_agent_documents import (
+    completed_workspace_documents,
+    select_workspace_document,
+)
 from smhai_backend.domains.workspace_agent_formula_worker import _checked_formula
 from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 
@@ -1415,6 +1419,131 @@ async def test_teacher_export_comes_from_scoped_database_counts(client, model_la
     assert view["artifact"]["filename"] == "class-assessment-progress.md"
     assert "任务完成率：40.0%" in view["artifact"]["markdown"]
     assert "must-not-leak" not in view["artifact"]["markdown"]
+
+
+async def test_generated_document_revision_requires_a_fresh_scoped_read(client, model_lane):
+    model, safety = model_lane
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    url = f"{BASE}/conversation"
+    original = "# 班会活动\n\n- 保留活动目标\n- 同桌分享"
+    revised = original.replace("同桌分享", "匿名纸卡")
+
+    async def turn(prompt):
+        response = await client.post(
+            f"{url}/turn", headers=headers, json={"text": prompt, "synthetic_only": True}
+        )
+        assert response.status_code == 200
+        return [json.loads(line) for line in response.text.splitlines()]
+
+    model.side_effect = [
+        assistant_step(
+            tool="save_markdown",
+            arguments=json.dumps({"filename": "activity-v1.md", "markdown": original}),
+        ),
+        assistant_step(text="已生成活动文档"),
+    ]
+    events = await turn("生成第一版活动文档")
+    assert events[-1]["status"] == "completed"
+    first = next(event["view"] for event in events if event["type"] == "tool_result")
+    ref = first["document_ref"]
+    revision = assistant_step(
+        tool="save_markdown",
+        arguments=json.dumps({
+            "filename": "activity-v2.md", "markdown": revised, "revision_of": ref,
+        }),
+    )
+    read = assistant_step(
+        tool="read_workspace_document", arguments='{"selection": "activity-v1.md"}'
+    )
+
+    async def edit(messages, _definitions, _context):
+        if messages[-1]["role"] != "tool":
+            assert "保留活动目标" not in json.dumps(messages, ensure_ascii=False)
+            return revision
+        result = json.loads(messages[-1]["content"])
+        if result.get("error") == "workflow_conflict":
+            return read
+        if "markdown" in result:
+            assert result == {
+                "document_ref": ref, "filename": "activity-v1.md", "markdown": original,
+            }
+            return revision
+        assert result["filename"] == "activity-v2.md"
+        return assistant_step(text="已生成第二版")
+
+    safety.check_output.reset_mock()
+    model.side_effect = edit
+    events = await turn("请把刚才的活动改用匿名纸卡")
+    assert events[-1]["status"] == "completed"
+    assert [event["code"] for event in events if event["type"] == "tool_failed"] == [
+        "workflow_conflict",
+    ]
+    viewed, second = [event["view"] for event in events if event["type"] == "tool_result"]
+    assert viewed == {"kind": "workspace_document_read", "filename": "activity-v1.md"}
+    assert second["revision_of"] == ref
+    assert second["document_ref"] != ref
+    assert second["previous_filename"] == first["filename"]
+    assert second["markdown"] == revised
+    assert safety.check_output.await_args_list[0].args[1] == f"activity-v1.md\n{original}"
+    history = (await client.get(url)).json()["data"]["events"]
+    assert [item["view"] for item in history if item.get("view", {}).get("kind") == "markdown"] == [
+        first, second,
+    ]
+
+    async def list_docs(messages, _definitions, _context):
+        assert "保留活动目标" not in json.dumps(messages, ensure_ascii=False)
+        if messages[-1]["role"] != "tool":
+            return assistant_step(tool="read_workspace_document", arguments='{"selection":"list"}')
+        entries = json.loads(messages[-1]["content"])["documents"]
+        assert [entry["filename"] for entry in entries] == ["activity-v2.md", "activity-v1.md"]
+        assert all(set(entry) == {"document_ref", "filename"} for entry in entries)
+        return assistant_step(text="已列出两份文档")
+
+    model.side_effect = list_docs
+    assert (await turn("列出刚才生成的文档"))[-1]["status"] == "completed"
+
+    original_screen = safety.check_output.side_effect
+
+    async def blocked_document(context, candidate, trace):
+        if candidate == f"activity-v1.md\n{original}":
+            return SimpleNamespace(decision=SimpleNamespace(action="BLOCK"))
+        return await original_screen(context, candidate, trace)
+
+    safety.check_output.side_effect = blocked_document
+    model.side_effect = [read, assistant_step(text="当前无法读取这份文档")]
+    blocked = await turn("读取第一版活动")
+    assert any(event.get("code") == "forbidden" for event in blocked)
+    assert "保留活动目标" not in json.dumps(model.await_args.args[0], ensure_ascii=False)
+    safety.check_output.side_effect = original_screen
+
+    for role, school in [("TEACHER", FIRST), ("ADMIN", SECOND)]:
+        await select(client, headers, role, school)
+        model.side_effect = [read, assistant_step(text="当前会话中没有这份文档")]
+        events = await turn("继续编辑活动第一版")
+        assert any(event.get("code") == "resource_not_found" for event in events)
+        assert "保留活动目标" not in json.dumps(model.await_args.args[0], ensure_ascii=False)
+
+
+def test_document_recall_accepts_legacy_results_and_skips_incomplete_runs():
+    view = {"kind": "markdown", "filename": "activity.md", "markdown": "# 已完成的旧文档"}
+    events = [
+        {"run_id": "original", "call_id": "one", "type": "tool_result", "view": view},
+        {
+            "run_id": "original", "call_id": "two", "type": "tool_result",
+            "view": {"kind": "class_progress", "artifact": view},
+        },
+        {"run_id": "original", "type": "end", "status": "completed"},
+        {"run_id": "unfinished", "call_id": "three", "type": "tool_result", "view": view},
+        {"run_id": "unfinished", "type": "end", "status": "blocked"},
+    ]
+    documents = completed_workspace_documents(events)
+    assert len(documents) == 1
+    document = select_workspace_document(documents, "latest")
+    assert document is not None
+    assert document.markdown == view["markdown"]
+    assert select_workspace_document(documents, document.ref) == document
+    assert select_workspace_document(documents, "activity.md") == document
 
 
 def cat_csv(items: list[dict]) -> bytes:

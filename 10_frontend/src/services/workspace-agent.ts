@@ -101,7 +101,9 @@ export type WorkspaceAgentView =
   | { kind: 'school_audit'; items: Omit<SchoolOperationsAuditEvent, 'event_ref'>[]; query: { offset: number; limit: number; category: SchoolOperationsAuditCategory | null }; visible_count: number; has_more: boolean }
   | { kind: 'system_health'; statuses: Record<string, string>; checked_at: string }
   | { kind: 'workflow'; workflow: WorkflowPanel }
-  | { kind: 'markdown'; filename: string; markdown: string }
+  | { kind: 'markdown'; filename: string; markdown: string; document_ref?: string; revision_of?: string; previous_filename?: string }
+  | { kind: 'workspace_document_read'; filename: string }
+  | { kind: 'workspace_document_index'; filenames: string[] }
 
 export type WorkspaceEvent = { run_id: string } & (
   | { type: 'start'; trace_id: string; requires_attachment?: boolean }

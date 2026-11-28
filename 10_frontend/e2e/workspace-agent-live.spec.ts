@@ -1,5 +1,6 @@
 /* global HTMLImageElement, HTMLTextAreaElement */
 import { Buffer } from 'node:buffer'
+import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
@@ -205,6 +206,66 @@ test('the teacher combines verified class counts and education material in a cla
   expect(wordActivity.document).toContain('世界卫生组织')
   expect(wordActivity.relationships).toContain('https://www.who.int/')
   expect(sessionWrites).toEqual([])
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
+test('the teacher reopens and revises a generated Word document', async ({ page }) => {
+  test.setTimeout(210_000)
+  await signIn(page)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const suffix = randomUUID().replace(/[^a-f]/g, '').slice(0, 8)
+  const basename = `classroom-activity-${suffix}`
+  const originalName = `${basename}-v1.md`
+  const revisedName = `${basename}-v2.md`
+  const originalRun = await ask(page,
+    `请生成一份可编辑的 Word 课堂活动，Markdown 文件名为 ${originalName}。标题是「课堂收尾活动」。内容按这两行写：活动目标：练习倾听；环节二：同桌分享两分钟。`,
+    '发送任务',
+  )
+  expect(originalRun.at(-1)?.status).toBe('completed')
+  const original = originalRun.find((event) => event.view?.kind === 'markdown')?.view
+  expect(original?.filename).toBe(originalName)
+  expect(original?.document_ref).toMatch(/^document-[a-f0-9]{16}$/)
+  expect(original?.markdown).toContain('练习倾听')
+  expect(original?.markdown).toContain('同桌分享两分钟')
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: `下载 ${originalName}`, exact: true })).toBeVisible()
+  const revisionRun = await ask(page,
+    `请修订刚才生成的 ${originalName}。把环节二的内容改为「匿名交一张纸卡」，其余内容保留原样，保存为 ${revisedName}，并提供可编辑 Word。`,
+    '发送任务',
+  )
+  expect(revisionRun.at(-1)?.status).toBe('completed')
+  const readIndex = revisionRun.findIndex((event) => event.view?.kind === 'workspace_document_read')
+  const saveIndex = revisionRun.findIndex((event) => event.view?.kind === 'markdown')
+  expect(readIndex).toBeGreaterThanOrEqual(0)
+  expect(saveIndex).toBeGreaterThan(readIndex)
+  expect(revisionRun[readIndex].view).toEqual({ kind: 'workspace_document_read', filename: originalName })
+  const revision = revisionRun[saveIndex].view
+  expect(revision.filename).toBe(revisedName)
+  expect(revision.revision_of).toBe(original.document_ref)
+  expect(revision.markdown).toContain('练习倾听')
+  expect(revision.markdown).toContain('匿名交一张纸卡')
+  expect(revision.markdown).not.toContain('同桌分享两分钟')
+  await expect(page.getByText(`修订自 ${originalName}`, { exact: true })).toBeVisible()
+
+  await page.reload()
+  const writes: string[] = []
+  page.on('request', (request) => {
+    if (request.method() === 'POST') writes.push(new URL(request.url()).pathname)
+  })
+  for (const [name, text] of [[originalName, '同桌分享两分钟'], [revisedName, '匿名交一张纸卡']]) {
+    const stem = name.slice(0, -3)
+    const pending = page.waitForEvent('download')
+    await page.getByRole('button', { name: `下载 Word · ${stem}`, exact: true }).click()
+    const download = await pending
+    expect(download.suggestedFilename()).toBe(`${stem}.docx`)
+    const files = unzipSync(new Uint8Array(await readFile(await download.path())))
+    const body = strFromU8(files['word/document.xml'])
+    expect(body).toContain('练习倾听')
+    expect(body).toContain(text)
+  }
+  expect(writes).toEqual([])
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
