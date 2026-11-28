@@ -30,6 +30,13 @@ function letter(text: string, x: number, y: number, confidence = 90) {
   return { text, confidence, bbox: { x0: 2 * x - 5, y0: 2 * y - 8, x1: 2 * x + 5, y1: 2 * y + 8 } }
 }
 
+function ellipse(center: Point, rx: number, ry = rx) {
+  return Array.from({ length: 72 }, (_, index): Point => {
+    const angle = index * Math.PI / 36
+    return [Math.round(center[0] + rx * Math.cos(angle)), Math.round(center[1] + ry * Math.sin(angle))]
+  })
+}
+
 describe('workspace geometry image notes', () => {
   it('estimates angles and associates nearby distinct labels in original image coordinates', () => {
     const { raster, triangle, outline } = fixture()
@@ -54,21 +61,55 @@ describe('workspace geometry image notes', () => {
     expect(text).not.toMatch(/[AXY]/)
   })
 
-  it('ignores open outlines, circles and outlines with substantial internal lines', () => {
+  it('ignores open polygons and polygons with substantial internal lines', () => {
     const { raster, triangle, outline, stroke } = fixture()
     stroke(triangle[0], triangle[1])
     stroke(triangle[0], triangle[2])
-    expect(readWorkspaceGeometry(raster, [])).toBeUndefined()
-    const circle = Array.from({ length: 36 }, (_, index): Point => {
-      const angle = index * Math.PI / 18
-      return [Math.round(385 + 70 * Math.cos(angle)), Math.round(230 + 70 * Math.sin(angle))]
-    })
-    outline(circle)
     expect(readWorkspaceGeometry(raster, [])).toBeUndefined()
     const square: Point[] = [[35, 40], [250, 40], [250, 315], [35, 315]]
     outline(square)
     stroke(square[0], square[2])
     stroke(square[1], square[3])
+    expect(readWorkspaceGeometry(raster, [])).toBeUndefined()
+  })
+
+  it('identifies a labeled diameter and a separate radius on the same circle', () => {
+    const { raster, outline, stroke } = fixture()
+    outline(ellipse([270, 180], 115))
+    stroke([155, 180], [385, 180])
+    stroke([270, 180], [270, 65])
+    const text = readWorkspaceGeometry(raster, [
+      letter('A', 140, 183), letter('B', 402, 180), letter('C', 270, 49), letter('O', 284, 198),
+    ])
+    expect(text).toContain('图形 1：圆')
+    expect(text).toContain('从A（左侧圆周）经过O（圆心）到B（右侧圆周）画有直径')
+    expect(text).toContain('从O（圆心）到C（上侧圆周）画有半径')
+  })
+
+  it('keeps a plain circle and does not turn an off-center chord into a diameter', () => {
+    const { raster, outline, stroke } = fixture()
+    outline(ellipse([270, 180], 100))
+    expect(readWorkspaceGeometry(raster, [])?.split('\n').at(-1)).toBe('图形 1：圆')
+    stroke([184, 130], [356, 130])
+    expect(readWorkspaceGeometry(raster, [])?.split('\n').at(-1)).toBe('图形 1：圆')
+  })
+
+  it('identifies a slanted diameter drawn through the center', () => {
+    const { raster, outline, stroke } = fixture()
+    outline(ellipse([220, 175], 114))
+    stroke([139, 94], [301, 256])
+    const text = readWorkspaceGeometry(raster, [])
+    expect(text).toContain('左上侧圆周')
+    expect(text).toContain('右下侧圆周')
+    expect(text).toContain('画有直径')
+    expect(text).not.toContain('画有半径')
+  })
+
+  it('leaves an open arc and a visibly stretched ellipse unsupported', () => {
+    const { raster, outline, stroke } = fixture()
+    const arc = ellipse([155, 185], 80).slice(0, 57)
+    arc.slice(1).forEach((point, index) => stroke(arc[index], point))
+    outline(ellipse([386, 180], 95, 62))
     expect(readWorkspaceGeometry(raster, [])).toBeUndefined()
   })
 

@@ -1013,8 +1013,7 @@ test('a learner reads a synthetic worksheet image locally and asks the model abo
   expect(reply.find((event) => event.type === 'answer')?.text).toMatch(/\b15\b|十五/)
 })
 
-test('a learner reads a geometry diagram locally and sends only the reviewed shape notes', async ({ page }) => {
-  test.setTimeout(180_000)
+async function reviewSyntheticGeometry(page: Page, shape: 'triangle' | 'circle') {
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 840 })
@@ -1023,7 +1022,7 @@ test('a learner reads a geometry diagram locally and sends only the reviewed sha
   page.context().on('request', (request) => {
     if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
   })
-  const encoded = await page.evaluate(() => {
+  const encoded = await page.evaluate((kind) => {
     const canvas = document.createElement('canvas')
     canvas.width = 660
     canvas.height = 430
@@ -1035,14 +1034,26 @@ test('a learner reads a geometry diagram locally and sends only the reviewed sha
     context.fillText('PRACTICE SKETCH', 36, 55)
     context.strokeStyle = '#242d45'
     context.lineWidth = 5
-    context.beginPath()
-    context.moveTo(160, 130)
-    context.lineTo(400, 130)
-    context.lineTo(160, 310)
-    context.closePath()
-    context.stroke()
+    if (kind === 'circle') {
+      context.beginPath()
+      context.arc(310, 230, 118, 0, Math.PI * 2)
+      context.stroke()
+      context.beginPath()
+      context.moveTo(192, 230)
+      context.lineTo(428, 230)
+      context.moveTo(310, 230)
+      context.lineTo(310, 112)
+      context.stroke()
+    } else {
+      context.beginPath()
+      context.moveTo(160, 130)
+      context.lineTo(400, 130)
+      context.lineTo(160, 310)
+      context.closePath()
+      context.stroke()
+    }
     return canvas.toDataURL('image/png').split(',')[1]
-  })
+  }, shape)
   await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
     name: 'synthetic-geometry-local.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64'),
   })
@@ -1058,7 +1069,6 @@ test('a learner reads a geometry diagram locally and sends only the reviewed sha
   const start = text.indexOf('图形轮廓（')
   expect(start).toBeGreaterThan(0)
   const notes = text.slice(start)
-  expect(notes).toContain('三角形，左上约 90°，右上约 35°，左下约 55°')
   await expect(addOutline).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   await editor.evaluate((element, offset) => {
@@ -1068,7 +1078,13 @@ test('a learner reads a geometry diagram locally and sends only the reviewed sha
   await preview.getByRole('button', { name: '插入到输入框' }).click()
   expect(writes).toEqual([])
   await expect(page.locator('#workspace-agent-input')).toHaveValue(notes)
+  return notes
+}
 
+test('a learner reads a geometry diagram locally and sends only the reviewed shape notes', async ({ page }) => {
+  test.setTimeout(180_000)
+  const notes = await reviewSyntheticGeometry(page, 'triangle')
+  expect(notes).toContain('三角形，左上约 90°，右上约 35°，左下约 55°')
   const prompt = `按草图的估测，哪个角最接近直角？请给出位置和大致度数\n\n${notes}`
   const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
   const events = await ask(page, prompt, '发送消息')
@@ -1076,6 +1092,23 @@ test('a learner reads a geometry diagram locally and sends only the reviewed sha
   const answer = events.find((event) => event.type === 'answer')?.text
   expect(answer).toMatch(/左上/)
   expect(answer).toMatch(/90|九十/)
+  expect(JSON.stringify(events)).not.toMatch(/PRACTICE SKETCH|synthetic-geometry-local\.png/i)
+})
+
+test('a learner reads a circle diagram and uses its diameter in a calculation', async ({ page }) => {
+  test.setTimeout(180_000)
+  const notes = await reviewSyntheticGeometry(page, 'circle')
+  expect(notes).toContain('图形 1：圆')
+  expect(notes).toMatch(/从左侧圆周经过圆心到右侧圆周画有直径|从右侧圆周经过圆心到左侧圆周画有直径/)
+  expect(notes).toContain('从圆心到上侧圆周画有半径')
+  const prompt = `题目只给出图里的横线长 18 厘米。根据图形说明，竖线有多长？请说明两条线是什么\n\n${notes}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  const answer = events.find((event) => event.type === 'answer')?.text
+  expect(answer).toMatch(/(?:^|[^\d])9\s*(?:厘米|cm)|九厘米/)
+  expect(answer).toContain('直径')
+  expect(answer).toContain('半径')
   expect(JSON.stringify(events)).not.toMatch(/PRACTICE SKETCH|synthetic-geometry-local\.png/i)
 })
 
