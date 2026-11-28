@@ -6,8 +6,11 @@ import {
 } from './workspace-image-chart'
 import { formulaPixelBounds, type FormulaRegion } from './workspace-formula-region'
 import { readWorksheetFormulaRegions } from './workspace-formula-suggestions'
+import { readWorkspaceImageGeometry } from './workspace-image-geometry'
 
 export type WorkspaceChartPreview = { kind: 'bar' | 'stacked-bar' | 'line'; text: string }
+type WorksheetPreview = { formulaSuggestions?: FormulaRegion[]; geometry?: string }
+type ImagePreview = WorksheetPreview & { text: string; chart?: WorkspaceChartPreview }
 
 function readWordLines(page: Page) {
   return page.blocks?.flatMap((block) => block.paragraphs.flatMap((paragraph) =>
@@ -15,9 +18,9 @@ function readWordLines(page: Page) {
   )) ?? []
 }
 
-export async function readWorkspaceImage(file: File, signal: AbortSignal): Promise<{
-  text: string; chart?: WorkspaceChartPreview; formulaSuggestions?: FormulaRegion[]
-}> {
+export async function readWorkspaceImage(
+  file: File, signal: AbortSignal, onPreview?: (worksheet: WorksheetPreview) => void,
+): Promise<ImagePreview> {
   if (!file.size || file.size > 4 * 1024 * 1024) {
     throw new Error('请选择不超过 4 MiB 的 PNG、JPEG 或 WebP 图片')
   }
@@ -38,10 +41,17 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
     abortReading = () => reject(new Error('图片识别已中止'))
     signal.addEventListener('abort', abortReading, { once: true })
   })
-  const deadline = window.setTimeout(abortReading, 45_000)
+  // The first load downloads the same-origin OCR engine and two language packs.
+  let deadline = window.setTimeout(abortReading, 150_000)
   try {
     if (bitmap.width * bitmap.height > 12_000_000) throw new Error('请选择像素较少的图片')
     signal.throwIfAborted()
+    if (onPreview) {
+      onPreview({
+        formulaSuggestions: readWorksheetFormulaRegions(bitmap, []),
+        geometry: readWorkspaceImageGeometry(bitmap, []),
+      })
+    }
     const loading = createWorker(['eng', 'chi_sim'], OEM.LSTM_ONLY, {
       workerPath: `${assets}/worker.min.js`,
       corePath: assets,
@@ -56,14 +66,20 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
       return loaded
     })
     worker = await Promise.race([loading, interruption])
+    window.clearTimeout(deadline)
+    deadline = window.setTimeout(abortReading, 45_000)
     const result = await Promise.race([worker.recognize(file, {}, { blocks: true }), interruption])
     const content = result.data.text.trim()
     if (content.length > 3_000) throw new Error('请选择只包含所需文字的图片')
     const lines = readWordLines(result.data)
     const words = lines.flat()
-    const withFormulaSuggestions = () => ({ text: content, formulaSuggestions: readWorksheetFormulaRegions(bitmap, lines) })
+    const worksheetPreview = () => ({
+      text: content,
+      formulaSuggestions: readWorksheetFormulaRegions(bitmap, lines),
+      geometry: readWorkspaceImageGeometry(bitmap, words),
+    })
     const raster = workspaceChartRaster(bitmap, words)
-    if (!raster) return withFormulaSuggestions()
+    if (!raster) return worksheetPreview()
     const barChart = detectWorkspaceBarChart(raster, words)
     let barValues = barChart && readWorkspaceBarChart(barChart, words)
     if (barChart && !barValues) {
@@ -77,7 +93,7 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
     }
     if (barChart && barValues) return { text: content, chart: { kind: barChart.kind, text: barValues } }
     const lineValues = readWorkspaceLineChart(raster, words)
-    return lineValues ? { text: content, chart: { kind: 'line', text: lineValues } } : withFormulaSuggestions()
+    return lineValues ? { text: content, chart: { kind: 'line', text: lineValues } } : worksheetPreview()
   } finally {
     expired = true
     bitmap.close()

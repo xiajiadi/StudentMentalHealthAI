@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
 import { URL } from 'node:url'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { strFromU8, unzipSync } from 'fflate'
 import { workbook } from '../tests/fixtures/workbook'
 import { readSchoolFeedbackContent } from '../src/services/school-feedback-content'
@@ -12,6 +12,13 @@ import { readSchoolFeedbackContent } from '../src/services/school-feedback-conte
 const origin = process.env.PSYNOVA_AGENT_QA_ORIGIN
 const account = process.env.PSYNOVA_AGENT_QA_USERNAME
 const password = process.env.PSYNOVA_AGENT_QA_PASSWORD
+const imageReadTimeout = 200_000
+
+async function waitForImageRecognition(preview: Locator) {
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await expect(preview.getByText('正在读取图片文字')).toHaveCount(0, { timeout: imageReadTimeout })
+  await expect(preview.getByRole('alert')).toHaveCount(0)
+}
 
 type Role = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PSYCHOLOGICAL_SPECIALIST'
 type SchoolContext = { role: Role; school_ref: string }
@@ -966,7 +973,7 @@ test('a learner asks the school to clarify the exact published feedback revision
 })
 
 test('a learner reads a synthetic worksheet image locally and asks the model about its text', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(320_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   const image = await page.evaluate(() => {
@@ -993,7 +1000,7 @@ test('a learner reads a synthetic worksheet image locally and asks the model abo
   })
   const preview = page.getByRole('dialog', { name: '图片文字预览' })
   await expect(preview).toBeVisible({ timeout: 60_000 })
-  await expect(preview.getByRole('textbox', { name: '识别出的文字' })).toHaveValue(/7\s*\+\s*8/)
+  await expect(preview.getByRole('textbox', { name: '识别出的文字' })).toHaveValue(/7\s*\+\s*8/, { timeout: imageReadTimeout })
   expect(writes).toEqual([])
   expect(workerRequests.some((url) => url.endsWith('/worker.min.js'))).toBe(true)
   expect(workerRequests.every((url) => new URL(url).origin === origin)).toBe(true)
@@ -1006,8 +1013,74 @@ test('a learner reads a synthetic worksheet image locally and asks the model abo
   expect(reply.find((event) => event.type === 'answer')?.text).toMatch(/\b15\b|十五/)
 })
 
-test('a learner reads bar heights from an uploaded chart and sends only the reviewed estimates', async ({ page }) => {
+test('a learner reads a geometry diagram locally and sends only the reviewed shape notes', async ({ page }) => {
   test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const writes: string[] = []
+  await page.route('**/assets/ocr-v7/worker.min.js', (route) => route.abort('failed'))
+  page.context().on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+  })
+  const encoded = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 660
+    canvas.height = 430
+    const context = canvas.getContext('2d')!
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.fillStyle = '#202634'
+    context.font = '28px Arial'
+    context.fillText('PRACTICE SKETCH', 36, 55)
+    context.strokeStyle = '#242d45'
+    context.lineWidth = 5
+    context.beginPath()
+    context.moveTo(160, 130)
+    context.lineTo(400, 130)
+    context.lineTo(160, 310)
+    context.closePath()
+    context.stroke()
+    return canvas.toDataURL('image/png').split(',')[1]
+  })
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-geometry-local.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64'),
+  })
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  const editor = preview.getByRole('textbox', { name: '识别出的文字' })
+  const addOutline = preview.getByRole('button', { name: '加入图形轮廓' })
+  await expect(addOutline).toBeVisible({ timeout: 25_000 })
+  const localNote = 'PRACTICE SKETCH'
+  await editor.fill(localNote)
+  await addOutline.click()
+  const text = await editor.inputValue()
+  expect(text.startsWith(localNote)).toBe(true)
+  const start = text.indexOf('图形轮廓（')
+  expect(start).toBeGreaterThan(0)
+  const notes = text.slice(start)
+  expect(notes).toContain('三角形，左上约 90°，右上约 35°，左下约 55°')
+  await expect(addOutline).toHaveCount(0)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+  await editor.evaluate((element, offset) => {
+    const textarea = element as HTMLTextAreaElement
+    textarea.setSelectionRange(offset, textarea.value.length)
+  }, start)
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  expect(writes).toEqual([])
+  await expect(page.locator('#workspace-agent-input')).toHaveValue(notes)
+
+  const prompt = `按草图的估测，哪个角最接近直角？请给出位置和大致度数\n\n${notes}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  const answer = events.find((event) => event.type === 'answer')?.text
+  expect(answer).toMatch(/左上/)
+  expect(answer).toMatch(/90|九十/)
+  expect(JSON.stringify(events)).not.toMatch(/PRACTICE SKETCH|synthetic-geometry-local\.png/i)
+})
+
+test('a learner reads bar heights from an uploaded chart and sends only the reviewed estimates', async ({ page }) => {
+  test.setTimeout(320_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 840 })
@@ -1057,12 +1130,12 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
   const preview = page.getByRole('dialog', { name: '图片文字预览' })
   const useChart = preview.getByRole('button', { name: '使用柱状图读数' })
   await uploadChart(false)
-  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await waitForImageRecognition(preview)
   await expect(useChart).toHaveCount(0)
   await preview.getByRole('button', { name: '关闭', exact: true }).click()
 
   await uploadChart(true)
-  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toBeVisible({ timeout: imageReadTimeout })
   await useChart.click()
   const editor = preview.getByRole('textbox', { name: '识别出的文字' })
   await expect(editor).toHaveValue('柱状图读数（按刻度和柱高估算）\n第 1 根（Alpha）约 20\n第 2 根（Beta）约 40\n第 3 根（Gamma）约 70')
@@ -1081,7 +1154,7 @@ test('a learner reads bar heights from an uploaded chart and sends only the revi
 })
 
 test('a learner reads line charts locally and compares their series with the agent', async ({ page }) => {
-  test.setTimeout(220_000)
+  test.setTimeout(360_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 840 })
@@ -1151,12 +1224,12 @@ test('a learner reads line charts locally and compares their series with the age
   const preview = page.getByRole('dialog', { name: '图片文字预览' })
   const useChart = preview.getByRole('button', { name: '使用折线图读数' })
   await upload('same-color')
-  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await waitForImageRecognition(preview)
   await expect(useChart).toHaveCount(0)
   await preview.getByRole('button', { name: '关闭', exact: true }).click()
 
   await upload('single')
-  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toBeVisible({ timeout: imageReadTimeout })
   await preview.getByText('查看原图', { exact: true }).click()
   const original = preview.getByRole('img', { name: '所选图片原图' })
   await expect(original).toBeVisible()
@@ -1177,7 +1250,7 @@ test('a learner reads line charts locally and compares their series with the age
   await preview.getByRole('button', { name: '关闭', exact: true }).click()
 
   await upload('multiple')
-  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toBeVisible({ timeout: imageReadTimeout })
   await useChart.click()
   const series = (await editor.inputValue()).split('\n')
   expect(series).toHaveLength(11)
@@ -1209,14 +1282,14 @@ test('a learner reads line charts locally and compares their series with the age
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   writes.length = 0
   await upload('single')
-  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toBeVisible({ timeout: imageReadTimeout })
   await useChart.click()
   await expect(editor).toHaveValue(single)
   expect(writes).toEqual([])
 })
 
 test('a learner previews stacked bar segments and sends only the reviewed estimates', async ({ page }) => {
-  test.setTimeout(180_000)
+  test.setTimeout(320_000)
   await signIn(page)
   await chooseRole(page, 'STUDENT', '/student/workspace')
   await page.setViewportSize({ width: 390, height: 840 })
@@ -1279,12 +1352,12 @@ test('a learner previews stacked bar segments and sends only the reviewed estima
   const preview = page.getByRole('dialog', { name: '图片文字预览' })
   const useChart = preview.getByRole('button', { name: '使用堆叠柱状图读数' })
   await upload(true)
-  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await waitForImageRecognition(preview)
   await expect(preview.getByRole('button', { name: /图读数/ })).toHaveCount(0)
   await preview.getByRole('button', { name: '关闭', exact: true }).click()
 
   await upload(false)
-  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await expect(useChart).toBeVisible({ timeout: imageReadTimeout })
   await useChart.click()
   const editor = preview.getByRole('textbox', { name: '识别出的文字' })
   await expect(editor).toHaveValue(/蓝色段 · Practice[\s\S]*橙色段 · Review[\s\S]*第 2 根（Beta）合计约 75，蓝色段约 35，橙色段约 40/)
@@ -1303,7 +1376,7 @@ test('a learner previews stacked bar segments and sends only the reviewed estima
 })
 
 test('a learner crops formulas from a worksheet and sends only the reviewed text', async ({ page }, testInfo) => {
-  test.setTimeout(240_000)
+  test.setTimeout(360_000)
   await page.addInitScript(() => {
     const target = window as typeof window & { formulaPayload?: unknown }
     const originalFetch = window.fetch.bind(window)
@@ -1426,7 +1499,7 @@ test('a learner crops formulas from a worksheet and sends only the reviewed text
 
   await upload('sheet')
   await expect(preview).toBeVisible({ timeout: 60_000 })
-  await expect(editor).toHaveValue(/Practice worksheet/i)
+  await expect(editor).toHaveValue(/Practice worksheet/i, { timeout: imageReadTimeout })
   await preview.getByRole('button', { name: '在原图框选公式' }).click()
   const recognizeRegion = preview.getByRole('button', { name: '交给学校服务识别选区' })
   await expect(recognizeRegion).toBeDisabled()

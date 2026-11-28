@@ -143,7 +143,7 @@ const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
 const attachment = ref<{
   name: string; content: string; image?: File; chart?: WorkspaceChartPreview
-  document?: DocumentPreview; formulaSuggestions?: FormulaRegion[]
+  document?: DocumentPreview; formulaSuggestions?: FormulaRegion[]; geometry?: string; extractedImageText?: string
 }>()
 const attachmentImageUrl = ref('')
 const editingFormulaRegion = ref(false)
@@ -159,6 +159,7 @@ watch(() => attachment.value?.image, (image, _previous, onCleanup) => {
 })
 const attachmentError = ref('')
 const attachmentReading = ref<false | 'image' | 'document' | 'table' | 'roster' | 'formula'>(false)
+const attachmentInteractionBlocked = computed(() => Boolean(attachmentReading.value && attachmentReading.value !== 'image'))
 const tablePreview = ref<{ name: string; sheets: LocalWorkspaceSheet[] }>()
 const tableSummary = ref<WorkspaceTableSummary>()
 const overview = ref<WorkspaceAgentResult | null>(null)
@@ -377,16 +378,24 @@ async function openAttachment(file: File) {
       return
     }
     let content: string
-    let chart: WorkspaceChartPreview | undefined
-    let formulaSuggestions: FormulaRegion[] | undefined
     let documentPreview: DocumentPreview | undefined
     if (image) {
       attachmentReading.value = 'image'
       const { readWorkspaceImage } = await import('@/services/workspace-image-text')
-      const result = await readWorkspaceImage(file, request.signal)
-      content = result.text
-      chart = result.chart
-      formulaSuggestions = result.formulaSuggestions
+      const result = await readWorkspaceImage(file, request.signal, (worksheet) => {
+        if (request.signal.aborted) return
+        attachment.value = { name: file.name, image: file, content: '', ...worksheet }
+        attachmentOpen.value = true
+      })
+      const preview = attachment.value
+      if (request.signal.aborted || preview?.image !== file) return
+      if (hasAttachmentControls(result.text)) throw new Error('请选择只包含可读文字的图片')
+      if (!preview.content) preview.content = result.text
+      else if (result.text) preview.extractedImageText = result.text
+      preview.chart = result.chart
+      preview.formulaSuggestions = result.formulaSuggestions
+      if (!preview.geometry || !preview.content.includes(preview.geometry)) preview.geometry = result.geometry
+      return
     } else if (kind === 'pdf' || kind === 'docx') {
       if (!file.size || file.size > 5 * 1024 * 1024) throw new Error('请选择不超过 5 MiB 的 PDF 或 DOCX')
       attachmentReading.value = 'document'
@@ -399,18 +408,18 @@ async function openAttachment(file: File) {
       }
       content = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer()).trim()
     }
-    const hasControlCharacter = Array.from(content).some((character) =>
-      character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
-    if ((!content && !image) || hasControlCharacter) throw new Error()
+    if (!content || hasAttachmentControls(content)) throw new Error()
     if (!request.signal.aborted) {
-      attachment.value = { name: file.name, content, image: image ? file : undefined, chart, document: documentPreview, formulaSuggestions }
+      attachment.value = { name: file.name, content, document: documentPreview }
       attachmentOpen.value = true
     }
   } catch (error) {
     if (!request.signal.aborted) {
       const known = error instanceof Error && /^(请选择|图片中未识别到文字|Excel 暂时无法读取)/.test(error.message)
       attachmentError.value = known ? error.message : image
-        ? '图片识别未能完成，请检查图片后重试'
+        ? attachment.value?.image === file
+          ? '未能读取图片文字，可以手动填写或核对图形'
+          : '图片识别未能完成，请检查图片后重试'
         : tableFormat === 'csv' ? 'CSV 暂时无法读取，请检查编码、列数和引号'
           : tableFormat === 'xlsx' ? WORKBOOK_INVALID
           : kind ? '无法提取文字，请检查文档是否可选取文字、受密码保护或损坏'
@@ -421,11 +430,17 @@ async function openAttachment(file: File) {
   }
 }
 
+function hasAttachmentControls(content: string) {
+  return Array.from(content).some((character) =>
+    character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
+}
+
 async function readFormula() {
   const preview = attachment.value
-  if (!preview?.image || attachmentReading.value) return
+  if (!preview?.image || attachmentInteractionBlocked.value) return
   const region = editingFormulaRegion.value ? { ...formulaRegion.value } : undefined
   if (region && !hasFormulaRegion(region)) return
+  cancelAttachmentRead()
   const request = new AbortController()
   attachmentRequest = request
   attachmentReading.value = 'formula'
@@ -451,17 +466,21 @@ async function readFormula() {
 }
 
 function appendRegionFormula() {
+  if (appendImagePreview(regionFormula.value)) regionFormula.value = ''
+}
+
+function appendImagePreview(excerpt: string) {
   const preview = attachment.value
-  if (!preview?.image || !regionFormula.value || attachmentReading.value) return
-  const text = [preview.content.trim(), regionFormula.value].filter(Boolean).join('\n\n')
+  if (!preview?.image || !excerpt || attachmentInteractionBlocked.value) return false
+  const text = [preview.content.trim(), excerpt].filter(Boolean).join('\n\n')
   if (text.length > 3000) {
-    attachmentError.value = '预览文字超过 3000 字，请先删减再加入公式'
-    return
+    attachmentError.value = '预览文字超过 3000 字，请先删减再加入'
+    return false
   }
   preview.content = text
-  regionFormula.value = ''
   attachmentError.value = ''
   void nextTick(() => document.getElementById('workspace-attachment-excerpt')?.focus())
+  return true
 }
 
 function closeAttachment() {
@@ -477,7 +496,7 @@ function confirmTable(summary: WorkspaceTableSummary) {
 }
 
 function insertAttachment() {
-  if (!attachment.value?.content.trim() || attachmentReading.value || chatSending.value || chat.value?.needsRetry) return
+  if (!attachment.value?.content.trim() || attachmentInteractionBlocked.value || chatSending.value || chat.value?.needsRetry) return
   const editor = document.getElementById('workspace-attachment-excerpt') as HTMLTextAreaElement | null
   const selected = editor?.value.slice(editor.selectionStart, editor.selectionEnd).trim()
   const text = [command.value.trim(), selected || attachment.value.content.trim()].filter(Boolean).join('\n\n')
@@ -486,8 +505,7 @@ function insertAttachment() {
     return
   }
   command.value = text
-  attachmentOpen.value = false
-  attachment.value = undefined
+  closeAttachment()
   void nextTick(() => responseArea.value?.querySelector('textarea')?.focus())
 }
 
@@ -782,7 +800,7 @@ function dateLabel(value: string) {
       <strong>{{ attachment?.name }}</strong>
       <WorkspaceFormulaRegion
         v-if="attachmentImageUrl" v-model="formulaRegion" :source="attachmentImageUrl" :editing="editingFormulaRegion"
-        :disabled="Boolean(attachmentReading)" :suggestions="attachment?.formulaSuggestions"
+        :disabled="attachmentInteractionBlocked" :suggestions="attachment?.formulaSuggestions"
       />
       <div v-if="editingFormulaRegion && regionFormula" class="workspace-agent__formula-result">
         <output aria-label="上次识别的公式">{{ regionFormula }}</output>
@@ -792,6 +810,7 @@ function dateLabel(value: string) {
       <AppTextarea v-if="attachment?.image || attachment?.document" id="workspace-attachment-excerpt" v-model="attachment.content" :label="attachment.image ? '识别出的文字' : '提取的文字'" :rows="5" :maxlength="attachment.image ? 3000 : 12000" />
       <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
       <p v-if="attachmentReading === 'formula'" role="status">学校服务正在识别公式</p>
+      <p v-else-if="attachmentReading === 'image'" role="status">正在读取图片文字，可先核对图形或框选公式</p>
       <small v-else-if="attachment?.image && !attachment.content.trim()">暂无可插入的文字</small>
       <small v-if="attachment?.image && !editingFormulaRegion">若整张图只有一道合成公式，可直接交给学校服务识别。整页练习请先框选</small>
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
@@ -800,15 +819,27 @@ function dateLabel(value: string) {
         <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart.text" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart.text">
           {{ chartPreviewLabels[attachment.chart.kind] }}
         </AppButton>
-        <AppButton v-if="attachment?.image" variant="secondary" :disabled="Boolean(attachmentReading)" @click="editingFormulaRegion = !editingFormulaRegion">
+        <AppButton
+          v-if="attachment?.geometry && !attachment.content.includes(attachment.geometry)"
+          variant="secondary" :disabled="attachmentInteractionBlocked" @click="appendImagePreview(attachment.geometry)"
+        >
+          加入图形轮廓
+        </AppButton>
+        <AppButton
+          v-if="attachment?.extractedImageText && !attachment.content.includes(attachment.extractedImageText)"
+          variant="secondary" :disabled="attachmentInteractionBlocked" @click="appendImagePreview(attachment.extractedImageText)"
+        >
+          加入识别出的文字
+        </AppButton>
+        <AppButton v-if="attachment?.image" variant="secondary" :disabled="attachmentInteractionBlocked" @click="editingFormulaRegion = !editingFormulaRegion">
           {{ editingFormulaRegion ? '退出框选' : '在原图框选公式' }}
         </AppButton>
         <AppButton
           v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'"
-          :disabled="Boolean(attachmentReading) || (editingFormulaRegion && !hasFormulaRegion(formulaRegion))" @click="readFormula"
+          :disabled="attachmentInteractionBlocked || (editingFormulaRegion && !hasFormulaRegion(formulaRegion))" @click="readFormula"
         >{{ editingFormulaRegion ? '交给学校服务识别选区' : '交给学校服务识别公式' }}</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
-        <AppButton v-if="role === 'student' || agentMode" :disabled="Boolean(attachmentReading) || !attachment?.content.trim()" @click="insertAttachment">插入到输入框</AppButton>
+        <AppButton v-if="role === 'student' || agentMode" :disabled="attachmentInteractionBlocked || !attachment?.content.trim()" @click="insertAttachment">插入到输入框</AppButton>
       </div>
     </AppDialog>
     <AppDialog
