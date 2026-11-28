@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
+from pathlib import Path
 from time import time
 from uuid import uuid4
 
@@ -47,6 +49,36 @@ class WorkspaceHistory:
 
     def connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=2)
+
+    @contextmanager
+    def worker(self) -> Iterator[None]:
+        # Use a separate database so the process lock does not lock the conversation data.
+        lock_path = str(Path(self.path).resolve()) + ".worker.sqlite3"
+        with closing(sqlite3.connect(lock_path, timeout=0)) as lock:
+            try:
+                lock.execute("BEGIN EXCLUSIVE")
+            except sqlite3.OperationalError as exc:
+                if exc.sqlite_errorcode in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                    raise RuntimeError("workspace history already has a running worker") from exc
+                raise
+            self._recover_interrupted_runs()
+            yield
+
+    def _recover_interrupted_runs(self) -> None:
+        with closing(self.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            active = db.execute(
+                "SELECT owner, run, events FROM workspace_history WHERE run IS NOT NULL"
+            ).fetchall()
+            for owner, run, stored_events in active:
+                events = [
+                    *json.loads(stored_events),
+                    {"type": "end", "status": "interrupted", "run_id": run},
+                ][-_MAX_EVENTS:]
+                db.execute(
+                    "UPDATE workspace_history SET run=NULL, events=? WHERE owner=? AND run=?",
+                    (json.dumps(events, ensure_ascii=False), owner, run),
+                )
 
     def read(
         self, owner: str, since: str | None = None

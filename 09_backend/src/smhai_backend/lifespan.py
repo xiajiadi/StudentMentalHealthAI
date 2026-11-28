@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 
 from fastapi import FastAPI
 
@@ -15,17 +15,19 @@ def make_lifespan(container: BackendContainer):
     async def lifespan(app: FastAPI):
         configure_logging(json_logs=container.settings.observability.json_logs)
         app.state.lifecycle_started = False
-        try:
-            await container.start()
-            app.state.lifecycle_started = True
-            yield
-        finally:
+        history = getattr(app.state, "workspace_history", None)
+        with history.worker() if history is not None else nullcontext():
             try:
-                history = getattr(app.state, "workspace_history", None)
-                if history is not None:
-                    await history.stop_runs()
+                await container.start()
+                app.state.lifecycle_started = True
+                yield
             finally:
-                await container.close()
-            app.state.lifecycle_started = False
+                try:
+                    history = getattr(app.state, "workspace_history", None)
+                    if history is not None:
+                        await history.stop_runs()
+                finally:
+                    await container.close()
+                    app.state.lifecycle_started = False
 
     return lifespan
