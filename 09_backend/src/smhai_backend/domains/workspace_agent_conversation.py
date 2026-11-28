@@ -6,6 +6,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from tempfile import TemporaryFile
+from time import perf_counter
 from typing import Literal
 from uuid import uuid4
 
@@ -42,6 +43,7 @@ from .workspace_agent_tools import (
     STUDENT,
     TEACHER,
     TOOLS,
+    DirectResult,
     DocumentSelection,
     Draft,
     ReferralDraft,
@@ -67,6 +69,9 @@ lookup references can help select an item. They carry no current status or count
 When the browser has shown a results component, keep your final reply to at most three lines,
 unless the user explicitly asked for an explanation. Leave dates, opaque identifiers and
 business labels in the result cards. Do not repeat them in your final reply.
+When a single trusted result card fully satisfies a simple read-only query, set
+finish_with_result=true if the selected tool supports it. Leave it false for requests that
+need another operation, a separate output, analysis, explanation or clarification.
 If access is denied or a tool fails, use the returned error code to correct the request or explain
 the dependency. Do not retry the same failed arguments. Ask for missing details when necessary.
 Never choose an assessment answer or infer mental health from completion rates. For students
@@ -141,6 +146,13 @@ _LOOKUP_REF_FIELDS = {
     "list_cat_handoffs": ("handoffs", "handoff_ref"),
 }
 _CLASS_PROGRESS_TOOLS = {"class_progress", "make_class_progress_report"}
+_DIRECT_RESULT_KINDS = {
+    "list_student_assessments": "student_tasks",
+    "class_progress": "class_progress",
+    "make_class_progress_report": "class_progress",
+    "inspect_school_library": "school_library_inventory",
+    "school_student_counts": "school_student_counts",
+}
 _RUN_ID = r"^[0-9a-f]{32}$"
 
 
@@ -351,7 +363,12 @@ async def _run(
     ])
     local_context = _safety_context(actor, input_text, context)
     yield {"type": "status", "status": "screening"}
+    checked_at = perf_counter()
     input_check = await container.safety.check_input(local_context, context)
+    log.info(
+        "workspace_agent_safety_timing", trace_id=context.trace_id, stage="input",
+        latency_ms=round((perf_counter() - checked_at) * 1000),
+    )
     if not _proceed(input_check, input_text, actor):
         log.info(
             "workspace_agent_screened",
@@ -391,6 +408,7 @@ async def _run(
     async with asyncio.timeout(145):
         for _ in range(5):
             yield {"type": "status", "status": "model"}
+            requested_at = perf_counter()
             step = ModelStep.model_validate(
                 await container.llm.workspace_agent_step(messages, definitions, context)
             )
@@ -400,6 +418,7 @@ async def _run(
                 model=step.model,
                 completion_id=step.completion_id,
                 tool_count=len(step.message.tool_calls),
+                latency_ms=round((perf_counter() - requested_at) * 1000),
             )
             if not step.message.tool_calls:
                 answer = (step.message.content or "").strip()
@@ -408,7 +427,12 @@ async def _run(
                         ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="empty agent response"
                     )
                 yield {"type": "status", "status": "checking_response"}
+                checked_at = perf_counter()
                 check = await container.safety.check_output(local_context, answer, context)
+                log.info(
+                    "workspace_agent_safety_timing", trace_id=context.trace_id, stage="output",
+                    latency_ms=round((perf_counter() - checked_at) * 1000),
+                )
                 if _proceed(check, answer, actor):
                     yield {"type": "answer", "text": answer, "model": step.model}
                     yield {"type": "end", "status": "completed"}
@@ -437,6 +461,8 @@ async def _run(
                 name = call.function.name
                 tool = available.get(name)
                 model_data: dict
+                direct_result = False
+                called_at = perf_counter()
                 try:
                     if tool is None:
                         raise error(ErrorCode.FORBIDDEN, detail="tool is unavailable")
@@ -522,6 +548,12 @@ async def _run(
                         )
                     if view["kind"] == "teacher_progress_class_choice":
                         unresolved_class_selection = True
+                    direct_result = (
+                        len(calls) == 1
+                        and isinstance(arguments, DirectResult)
+                        and arguments.finish_with_result
+                        and _DIRECT_RESULT_KINDS.get(name) == view["kind"]
+                    )
                     # Keep the rendered role-specific details local, including browser-only tokens.
                     yield {
                         "type": "tool_result",
@@ -586,7 +618,11 @@ async def _run(
                     tool=name if tool else "unavailable",
                     tool_call_id=call.id,
                     outcome=model_data.get("error", "OK"),
+                    latency_ms=round((perf_counter() - called_at) * 1000),
                 )
+                if direct_result:
+                    yield {"type": "end", "status": "completed"}
+                    return
                 messages.append(
                     {
                         "role": "tool",

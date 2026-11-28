@@ -49,7 +49,15 @@ class Arguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class TaskWindow(Arguments):
+class DirectResult(Arguments):
+    finish_with_result: bool = Field(
+        default=False,
+        description="True only when this one result card fully answers the request. Leave false "
+        "if another tool, document, explanation or user decision is needed.",
+    )
+
+
+class TaskWindow(DirectResult):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     class_designation: str | None = Field(default=None, min_length=1, max_length=128)
@@ -158,6 +166,7 @@ TOOLS = {
         "查询待完成测评",
         "Read the student's assigned assessments with current status and due dates.",
         (STUDENT,),
+        DirectResult,
     ),
     "open_student_assessment": Tool(
         "准备测评界面",
@@ -250,6 +259,7 @@ TOOLS = {
         "Count active reviewed documents and indexed text fragments in this school's private "
         "library. Titles, contents, and uploaded files are unavailable to the model.",
         (SPECIALIST,),
+        DirectResult,
     ),
     "inspect_cat_attachment": Tool(
         "验证合成 CAT 题库",
@@ -293,6 +303,7 @@ TOOLS = {
         "核对学生账号和班级人数",
         "Read actual school student account counts and class memberships.",
         (ADMIN,),
+        DirectResult,
     ),
     "preview_new_class": Tool(
         "预览新建班级",

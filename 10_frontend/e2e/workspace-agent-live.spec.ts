@@ -2,6 +2,7 @@
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { performance } from 'node:perf_hooks'
 import { URL } from 'node:url'
 import { expect, test, type Page } from '@playwright/test'
 import { strFromU8, unzipSync } from 'fflate'
@@ -72,6 +73,131 @@ async function ask(page: Page, prompt: string, label: string, consentRequired = 
   const newestRun = events.at(-1)?.run_id
   return events.filter((event: { run_id: string }) => event.run_id === newestRun)
 }
+
+test('four live workspace roles run together and one survives a browser reload', async ({ browser }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_CONCURRENT !== '1', 'Runs four live synthetic workspace sessions')
+  test.setTimeout(320_000)
+  const scopes = [
+    {
+      role: 'STUDENT', path: '/student/workspace', button: '发送消息', kind: 'student_tasks',
+      prompt: '查一下我现在能做的测评任务',
+      source: '/api/v1/school/tasks/student',
+    },
+    {
+      role: 'TEACHER', path: '/teacher/workspace', button: '发送任务', kind: 'class_progress',
+      prompt: '查一下我有权限查看的班级测评进度',
+      source: '/api/v1/school/teacher/task-progress',
+    },
+    {
+      role: 'PSYCHOLOGICAL_SPECIALIST', path: '/specialist/workspace', button: '发送任务',
+      kind: 'school_library_inventory',
+      prompt: '查一下本校资料库现在有多少份资料，提取了多少个片段',
+      source: '/api/v1/school/research-sources/library/documents',
+    },
+    {
+      role: 'ADMIN', path: '/admin/workspace', button: '发送任务', kind: 'school_student_counts',
+      prompt: '核对学校一共有多少学生账号和各班人数',
+      source: '/api/v1/school/admin/directory',
+    },
+  ] as const
+  const sessions = []
+  const pages: Page[] = []
+  const historyUrl = origin + '/api/v1/workspace-agent/conversation'
+  const snapshot = async (page: Page) => {
+    const response = await page.request.get(historyUrl)
+    expect(response.ok()).toBe(true)
+    return (await response.json()).data
+  }
+
+  try {
+    for (const scope of scopes) {
+      const session = await browser.newContext({ viewport: { width: 390, height: 840 } })
+      sessions.push(session)
+      const page = await session.newPage()
+      pages.push(page)
+      await signIn(page)
+      await chooseRole(page, scope.role, scope.path)
+    }
+    const expected = await Promise.all(pages.map(async (page, index) => {
+      const scope = scopes[index]
+      const source = await page.request.get(origin + scope.source)
+      expect(source.ok()).toBe(true)
+      const data = (await source.json()).data
+      if (scope.role === 'ADMIN') {
+        const students = data.members.filter((row: { role: string }) => row.role === 'student')
+        return { total: students.length, class_count: data.classes.length }
+      }
+      if (scope.role === 'PSYCHOLOGICAL_SPECIALIST') return { total: data.items.length }
+      return { total: data.length }
+    }))
+    const writes = pages.map(() => 0)
+    await Promise.all(pages.map(async (page, index) => {
+      const scope = scopes[index]
+      page.on('request', (request) => {
+        if (request.method() === 'POST' && request.url().endsWith('/conversation/turn')) writes[index]++
+      })
+      await page.locator('#workspace-agent-input').fill(scope.prompt)
+      await page.getByRole('button', { name: scope.button, exact: true }).click()
+      await expect(page.getByRole('button', { name: '同意并发送' })).toBeVisible()
+    }))
+    const launched = await Promise.all(pages.map(async (page) => {
+      const response = page.waitForResponse((item) => item.url().endsWith('/conversation/turn'), { timeout: 55_000 })
+      const sent = performance.now()
+      const visible = page.getByRole('status').filter({ hasText: /正在连接|正在检查输入|正在处理任务/ })
+      const feedback = visible.waitFor({ state: 'visible', timeout: 35_000 }).then(() => performance.now() - sent)
+      await page.getByRole('button', { name: '同意并发送' }).click()
+      expect((await response).ok()).toBe(true)
+      const headersMs = performance.now() - sent
+      return { sent, headersMs, feedbackMs: await feedback }
+    }))
+    const active = await Promise.all(pages.map(snapshot))
+    const runIds = active.map((session, index) => {
+      expect(session.scope.role).toBe(scopes[index].role)
+      expect(session.active_run_id).toMatch(/^[a-f0-9]{32}$/)
+      return session.active_run_id as string
+    })
+    expect(new Set(runIds).size).toBe(scopes.length)
+
+    // The original POST runs on the server when the teacher page closes its stream.
+    const observed = await Promise.all(pages.map(async (page, index) => {
+      if (scopes[index].role === 'TEACHER') await page.reload({ waitUntil: 'domcontentloaded' })
+      await expect.poll(async () => {
+        const session = await snapshot(page)
+        return session.events.findLast((event: { run_id: string; type: string }) =>
+          event.run_id === runIds[index] && event.type === 'end')?.status ?? 'running'
+      }, { timeout: 150_000, intervals: [1_500] }).toBe('completed')
+      const completedMs = Math.round(performance.now() - launched[index].sent)
+      const session = await snapshot(page)
+      for (const other of runIds.filter((id) => id !== runIds[index])) {
+        expect(session.events.some((event: { run_id: string }) => event.run_id === other)).toBe(false)
+      }
+      const events = session.events.filter((event: { run_id: string }) => event.run_id === runIds[index])
+      expect(events.find((event) => event.view?.kind === scopes[index].kind)?.view)
+        .toMatchObject(expected[index])
+      await expect(page.getByRole('button', { name: '取消任务' })).toHaveCount(0)
+      const modelSteps = events.filter((event) => event.type === 'status' && event.status === 'model').length
+      if (process.env.PSYNOVA_AGENT_QA_EXPECT_DIRECT_RESULT === '1') {
+        expect(modelSteps, scopes[index].role).toBe(1)
+        expect(events.some((event) => event.type === 'answer')).toBe(false)
+      }
+      return {
+        role: scopes[index].role,
+        traceId: events[0].trace_id,
+        firstFeedbackMs: Math.round(launched[index].feedbackMs),
+        firstResponseMs: Math.round(launched[index].headersMs),
+        completedMs,
+        modelSteps,
+        toolResults: events.filter((event) => event.type === 'tool_result').length,
+      }
+    }))
+    expect(writes).toEqual([1, 1, 1, 1])
+    const summary = JSON.stringify(observed)
+    await test.info().attach('workspace-runtime-concurrency', { body: summary, contentType: 'application/json' })
+    process.stdout.write(`Workspace timing from four synthetic sessions ${summary}\n`)
+  } finally {
+    await Promise.all(sessions.map((session) => session.close()))
+  }
+})
 
 function textPdf(text: string): Buffer {
   const stream = `BT /F1 12 Tf 72 700 Td (${text}) Tj ET\n`

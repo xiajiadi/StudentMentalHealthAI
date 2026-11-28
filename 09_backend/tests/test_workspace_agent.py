@@ -342,6 +342,56 @@ async def test_model_selects_role_scoped_tools_and_uses_results(client, tools, m
     assert (await client.get(url)).json()["data"]["events"] == []
 
 
+async def test_a_single_verified_result_can_finish_without_generated_text(
+    client, tools, model_lane,
+):
+    model, safety = model_lane
+    model.side_effect = [assistant_step(
+        tool="class_progress", arguments='{"finish_with_result":true}',
+    )]
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    response = await client.post(
+        f"{BASE}/conversation/turn", headers=headers,
+        json={"text": "只要班级进度数据", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["status"] == "completed"
+    assert not any(event["type"] == "answer" for event in events)
+    view = next(event["view"] for event in events if event["type"] == "tool_result")
+    assert view["kind"] == "class_progress"
+    assert view["rows"][0]["completed"] == 2
+    assert "must-not-leak" not in response.text
+    tools.teacher_progress.assert_awaited_once()
+    model.assert_awaited_once()
+    safety.check_input.assert_awaited_once()
+    safety.check_output.assert_not_awaited()
+
+
+async def test_direct_result_flag_cannot_end_a_group_of_tool_calls(client, model_lane):
+    model, safety = model_lane
+    progress = assistant_step(tool="class_progress", arguments='{"finish_with_result":true}')
+    education = assistant_step(tool="read_education_articles", arguments='{"topics":["stress"]}')
+    progress["message"]["tool_calls"] += education["message"]["tool_calls"]
+    model.side_effect = [progress, assistant_step(text="已核对进度，也查到了班会参考资料")]
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    response = await client.post(
+        f"{BASE}/conversation/turn", headers=headers,
+        json={"text": "给我班级进度和班会参考资料", "synthetic_only": True},
+    )
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert [item["view"]["kind"] for item in events if item["type"] == "tool_result"] == [
+        "class_progress", "education_articles",
+    ]
+    assert events[-2]["type"] == "answer"
+    assert events[-1]["status"] == "completed"
+    assert model.await_count == 2
+    safety.check_output.assert_awaited_once()
+
+
 async def test_disconnected_client_recovers_the_same_run_and_does_not_execute_it_twice(
     client, tools, model_lane
 ):
@@ -1740,7 +1790,7 @@ async def test_teacher_class_selection_never_defaults_to_all_after_an_unknown_sc
     model.side_effect = [
         assistant_step(
             tool="make_class_progress_report",
-            arguments=json.dumps({"class_designation": designation}),
+            arguments=json.dumps({"class_designation": designation, "finish_with_result": True}),
         ),
         assistant_step(tool="class_progress"),
         assistant_step(text="请核对要查询的班级"),
