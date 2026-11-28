@@ -14,9 +14,11 @@ import type { Role } from '@/types/contracts'
 import SupportChatView from '@/views/student/SupportChatView.vue'
 import WorkspaceConversation from '@/components/workspace/WorkspaceConversation.vue'
 import WorkspaceTablePreview from '@/components/workspace/WorkspaceTablePreview.vue'
+import WorkspaceFormulaRegion from '@/components/workspace/WorkspaceFormulaRegion.vue'
 import { WORKBOOK_INVALID, type LocalWorkspaceSheet, type WorkspaceTableSummary } from '@/services/workspace-table'
 import { identifyRosterFile, type RosterAttachment } from '@/services/school-roster-file'
 import type { WorkspaceChartPreview } from '@/services/workspace-image-text'
+import { hasFormulaRegion, type FormulaRegion } from '@/services/workspace-formula-region'
 
 const chartPreviewLabels: Record<WorkspaceChartPreview['kind'], string> = {
   bar: '使用柱状图读数',
@@ -141,7 +143,13 @@ const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
 const attachment = ref<{ name: string; content: string; image?: File; chart?: WorkspaceChartPreview; document?: DocumentPreview }>()
 const attachmentImageUrl = ref('')
+const editingFormulaRegion = ref(false)
+const formulaRegion = ref<FormulaRegion>({ left: 0, top: 0, right: 0, bottom: 0 })
+const regionFormula = ref('')
 watch(() => attachment.value?.image, (image, _previous, onCleanup) => {
+  editingFormulaRegion.value = false
+  formulaRegion.value = { left: 0, top: 0, right: 0, bottom: 0 }
+  regionFormula.value = ''
   const url = image ? URL.createObjectURL(image) : ''
   attachmentImageUrl.value = url
   if (url) onCleanup(() => URL.revokeObjectURL(url))
@@ -410,25 +418,44 @@ async function openAttachment(file: File) {
 async function readFormula() {
   const preview = attachment.value
   if (!preview?.image || attachmentReading.value) return
+  const region = editingFormulaRegion.value ? { ...formulaRegion.value } : undefined
+  if (region && !hasFormulaRegion(region)) return
   const request = new AbortController()
   attachmentRequest = request
   attachmentReading.value = 'formula'
   attachmentError.value = ''
   try {
     const { encodeWorkspaceFormulaImage } = await import('@/services/workspace-image-text')
-    const prepared = await encodeWorkspaceFormulaImage(preview.image, request.signal)
+    const prepared = await encodeWorkspaceFormulaImage(preview.image, request.signal, region)
     const text = await previewWorkspaceFormula(prepared, request.signal)
-    if (!request.signal.aborted && attachment.value === preview) preview.content = text
+    if (!request.signal.aborted && attachment.value === preview) {
+      if (region) regionFormula.value = text
+      else preview.content = text
+    }
   } catch (error) {
     if (!request.signal.aborted) {
       const code = error && typeof error === 'object' && 'code' in error ? String(error.code).toLowerCase() : ''
       attachmentError.value = code === 'dependency_unavailable'
         ? '学校公式识别暂不可用，请稍后再试'
-        : '没有读到清楚的公式，请裁剪出一道公式后再试'
+        : '没有读到清楚的公式，请框选完整的一道公式后再试'
     }
   } finally {
     if (attachmentRequest === request) attachmentReading.value = false
   }
+}
+
+function appendRegionFormula() {
+  const preview = attachment.value
+  if (!preview?.image || !regionFormula.value || attachmentReading.value) return
+  const text = [preview.content.trim(), regionFormula.value].filter(Boolean).join('\n\n')
+  if (text.length > 3000) {
+    attachmentError.value = '预览文字超过 3000 字，请先删减再加入公式'
+    return
+  }
+  preview.content = text
+  regionFormula.value = ''
+  attachmentError.value = ''
+  void nextTick(() => document.getElementById('workspace-attachment-excerpt')?.focus())
 }
 
 function closeAttachment() {
@@ -741,23 +768,30 @@ function dateLabel(value: string) {
       @update:open="(open) => { if (!open) closeAttachment() }"
     >
       <strong>{{ attachment?.name }}</strong>
-      <details v-if="attachmentImageUrl">
-        <summary>查看原图</summary>
-        <img class="workspace-agent__image-original" :src="attachmentImageUrl" alt="所选图片原图" loading="lazy">
-      </details>
+      <WorkspaceFormulaRegion v-if="attachmentImageUrl" v-model="formulaRegion" :source="attachmentImageUrl" :editing="editingFormulaRegion" :disabled="Boolean(attachmentReading)" />
+      <div v-if="editingFormulaRegion && regionFormula" class="workspace-agent__formula-result">
+        <output aria-label="上次识别的公式">{{ regionFormula }}</output>
+        <AppButton variant="secondary" size="sm" :disabled="Boolean(attachmentReading)" @click="appendRegionFormula">加入预览文字</AppButton>
+      </div>
       <small v-if="attachment?.document && attachment.document.characters > attachment.document.previewLength">显示前 {{ attachment.document.previewLength }} 字，共提取 {{ attachment.document.characters }} 字</small>
       <AppTextarea v-if="attachment?.image || attachment?.document" id="workspace-attachment-excerpt" v-model="attachment.content" :label="attachment.image ? '识别出的文字' : '提取的文字'" :rows="5" :maxlength="attachment.image ? 3000 : 12000" />
       <pre v-else class="workspace-agent__attachment">{{ attachment?.content }}</pre>
       <p v-if="attachmentReading === 'formula'" role="status">学校服务正在识别公式</p>
       <small v-else-if="attachment?.image && !attachment.content.trim()">暂无可插入的文字</small>
-      <small v-if="attachment?.image">公式识别会把图片交给学校服务。请只使用裁剪好的一道合成练习公式</small>
+      <small v-if="attachment?.image && !editingFormulaRegion">若整张图只有一道合成公式，可直接交给学校服务识别。整页练习请先框选</small>
       <p v-if="attachmentError" class="workspace-agent__error" role="alert">{{ attachmentError }}</p>
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="closeAttachment">关闭</AppButton>
         <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart.text" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart.text">
           {{ chartPreviewLabels[attachment.chart.kind] }}
         </AppButton>
-        <AppButton v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'" @click="readFormula">交给学校服务识别公式</AppButton>
+        <AppButton v-if="attachment?.image" variant="secondary" :disabled="Boolean(attachmentReading)" @click="editingFormulaRegion = !editingFormulaRegion">
+          {{ editingFormulaRegion ? '退出框选' : '在原图框选公式' }}
+        </AppButton>
+        <AppButton
+          v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'"
+          :disabled="Boolean(attachmentReading) || (editingFormulaRegion && !hasFormulaRegion(formulaRegion))" @click="readFormula"
+        >{{ editingFormulaRegion ? '交给学校服务识别选区' : '交给学校服务识别公式' }}</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>
         <AppButton v-if="role === 'student' || agentMode" :disabled="Boolean(attachmentReading) || !attachment?.content.trim()" @click="insertAttachment">插入到输入框</AppButton>
       </div>
@@ -836,6 +870,7 @@ button.workspace-agent__entry { width: 100%; text-align: start; background: tran
 .workspace-agent__error { color: var(--color-attention); font-size: 13px; }
 .workspace-agent__chat-status { margin: 8px 4px 0; color: var(--color-text-secondary); font-size: 13px; }
 .workspace-agent__attachment { max-height: 40vh; overflow: auto; padding: 12px; border-radius: var(--radius-control); background: var(--color-surface-muted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
-.workspace-agent__image-original { display: block; max-inline-size: 100%; max-block-size: min(38vh, 260px); object-fit: contain; margin-block-start: 8px; }
+.workspace-agent__formula-result { display: grid; gap: 7px; justify-items: start; margin-block: 8px 12px; }
+.workspace-agent__formula-result output { max-width: 100%; padding: 7px 10px; border-radius: var(--radius-control); background: var(--color-surface-muted); overflow-wrap: anywhere; }
 #workspace-agent-composer, #workspace-agent-conversation { scroll-margin-top: 88px; }
 </style>

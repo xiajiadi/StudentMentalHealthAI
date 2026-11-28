@@ -1,9 +1,10 @@
-/* global AbortSignal, Blob, File, URL, createImageBitmap */
+/* global AbortSignal, Blob, File, ImageBitmap, URL, createImageBitmap */
 
 import { createWorker, OEM, PSM, type Page } from 'tesseract.js'
 import {
   detectWorkspaceBarChart, readWorkspaceBarChart, readWorkspaceLineChart, workspaceChartRaster,
 } from './workspace-image-chart'
+import { formulaPixelBounds, type FormulaRegion } from './workspace-formula-region'
 
 export type WorkspaceChartPreview = { kind: 'bar' | 'stacked-bar' | 'line'; text: string }
 
@@ -82,24 +83,31 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
   }
 }
 
-export async function encodeWorkspaceFormulaImage(file: File, signal: AbortSignal): Promise<Blob> {
+export async function encodeWorkspaceFormulaImage(file: File, signal: AbortSignal, region?: FormulaRegion): Promise<Blob> {
   const bitmap = await createImageBitmap(file)
+  let section: ImageBitmap | undefined
   try {
     signal.throwIfAborted()
-    const scale = Math.min(1, 640 / Math.max(bitmap.width, bitmap.height))
+    const crop = formulaPixelBounds(bitmap.width, bitmap.height, region)
+    if (region) {
+      section = await createImageBitmap(bitmap, crop.left, crop.top, crop.width, crop.height)
+      signal.throwIfAborted()
+    }
+    const scale = Math.min(1, 640 / Math.max(crop.width, crop.height))
     const surface = document.createElement('canvas')
-    surface.width = Math.max(1, Math.round(bitmap.width * scale))
-    surface.height = Math.max(1, Math.round(bitmap.height * scale))
+    surface.width = Math.max(1, Math.round(crop.width * scale))
+    surface.height = Math.max(1, Math.round(crop.height * scale))
     const context = surface.getContext('2d', { alpha: false })
     if (!context) throw new Error('无法准备公式图片')
     context.fillStyle = '#fff'
     context.fillRect(0, 0, surface.width, surface.height)
-    context.drawImage(bitmap, 0, 0, surface.width, surface.height)
+    context.drawImage(section ?? bitmap, 0, 0, surface.width, surface.height)
     const encoded = await new Promise<Blob | null>((resolve) => surface.toBlob(resolve, 'image/png'))
     signal.throwIfAborted()
     if (!encoded || encoded.size > 768 * 1024) throw new Error('请选择只包含一道公式的清晰图片')
     return encoded
   } finally {
+    section?.close()
     bitmap.close()
   }
 }
