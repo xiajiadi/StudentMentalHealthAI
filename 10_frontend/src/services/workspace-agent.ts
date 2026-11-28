@@ -227,8 +227,8 @@ export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'app
   return (await response.json()).data as CatDraft
 }
 
-export async function previewWorkspaceCatHandoff(ref: string) {
-  const response = await realApiProvider.requestWorkspaceConversation('preview-cat-handoff', { handoff_ref: ref })
+export async function previewWorkspaceCatHandoff(ref: string, runId: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('preview-cat-handoff', { handoff_ref: ref, run_id: runId })
   return (await response.json()).data as TaskPublicationPreview
 }
 

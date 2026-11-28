@@ -25,7 +25,7 @@ from smhai_backend.domains.school_research_sources import library
 from . import workspace_agent_cat as cat_workflow
 from . import workspace_agent_feedback_guide as feedback_guide
 from . import workspace_agent_formula as formula_reader
-from .workspace_agent import _check_actor
+from .workspace_agent import _check_actor, _ensure_run_preview
 from .workspace_agent_documents import (
     WorkspaceDocument,
     completed_workspace_documents,
@@ -148,6 +148,10 @@ class TurnRequest(BaseModel):
 class CancelTurnRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     run_id: str = Field(pattern=_RUN_ID)
+
+
+class CatHandoffPreviewRequest(cat_workflow.CatHandoffSelection):
+    run_id: str | None = Field(default=None, pattern=_RUN_ID)
 
 
 class FunctionCall(BaseModel):
@@ -317,7 +321,9 @@ def _context_messages(
     return messages
 
 
-async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list[dict]):
+async def _run(
+    request: Request, actor: Actor, payload: TurnRequest, prior: list[dict], run_id: str
+):
     context = current_request_context(request)
     container = request.app.state.container
     continuing_runs = _continuing_runs(prior, payload.replaces_run_id)
@@ -484,6 +490,7 @@ async def _run(request: Request, actor: Actor, payload: TurnRequest, prior: list
                             actor,
                             name,
                             arguments,
+                            run_id=run_id,
                             cat_attachment_ref=payload.cat_attachment_ref,
                             table_summary=payload.table_summary,
                         )
@@ -791,10 +798,11 @@ async def approve_cat(request: Request, payload: cat_workflow.CatDraftAction, ac
 
 @router.post("/preview-cat-handoff")
 async def preview_cat(
-    request: Request, payload: cat_workflow.CatHandoffSelection, actor: CsrfActor
+    request: Request, payload: CatHandoffPreviewRequest, actor: CsrfActor
 ):
     _history(request, actor)
-    view, _ = await preview_cat_handoff(request, actor, payload.handoff_ref)
+    _ensure_run_preview(request, actor, payload.run_id)
+    view, _ = await preview_cat_handoff(request, actor, payload.handoff_ref, run_id=payload.run_id)
     return {"data": view}
 
 
@@ -836,22 +844,31 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
                 raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace run is unavailable")
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
-    run_id, prior = history.acquire(owner, replaces=replaces)
     context = current_request_context(request)
+    start = {
+        "type": "start",
+        "trace_id": context.trace_id,
+        "requires_attachment": payload.attachment is not None or payload.table_summary is not None,
+        **({"replaces_run_id": replaces} if replaces is not None else {}),
+    }
+    run_id, prior = history.acquire(owner, replaces=replaces, start=start)
     key = (owner, run_id)
     delivery: asyncio.Queue[bytes | None] = asyncio.Queue()
 
-    def record(event: dict) -> None:
-        history.append(owner, run_id, event)
+    def deliver(event: dict) -> None:
         if event["type"] != "model_context":
             line = json.dumps({**event, "run_id": run_id}, ensure_ascii=False)
             delivery.put_nowait((line + "\n").encode())
+
+    def record(event: dict) -> None:
+        history.append(owner, run_id, event)
+        deliver(event)
 
     async def execute():
         terminal = {"type": "end", "status": "interrupted"}
         try:
             async with asyncio.timeout(195):
-                async for event in _run(request, actor, payload, prior):
+                async for event in _run(request, actor, payload, prior, run_id):
                     if event["type"] == "end":
                         terminal = event
                     else:
@@ -884,12 +901,7 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
         while (line := await delivery.get()) is not None:
             yield line
 
-    record({
-        "type": "start",
-        "trace_id": context.trace_id,
-        "requires_attachment": payload.attachment is not None or payload.table_summary is not None,
-        **({"replaces_run_id": replaces} if replaces is not None else {}),
-    })
+    deliver(start)
     task = asyncio.create_task(execute())
     history.running[key] = task
     task.add_done_callback(released)

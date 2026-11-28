@@ -7,7 +7,6 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal
-from uuid import uuid4
 
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
@@ -26,7 +25,12 @@ from smhai_backend.domains.school_research_sources import library
 from smhai_backend.domains.school_support.schemas import SupportCasePageDto, SupportCategoryCode
 
 from . import workspace_agent_cat as cat_workflow
-from .workspace_agent import STARTABLE_ASSESSMENT_STATES, _ensure_demo_admin, _signature, _snapshot
+from .workspace_agent import (
+    STARTABLE_ASSESSMENT_STATES,
+    _class_token,
+    _ensure_demo_admin,
+    _snapshot,
+)
 from .workspace_agent_documents import DOCUMENT_FILENAME, DOCUMENT_LIMIT, DOCUMENT_REF
 from .workspace_agent_education import EducationTopic, student_education_articles
 from .workspace_agent_publishing import TaskPreview
@@ -404,9 +408,12 @@ def _date(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-async def preview_cat_handoff(request: Request, actor: Actor, ref: str):
+async def preview_cat_handoff(
+    request: Request, actor: Actor, ref: str, *, run_id: str | None = None
+):
     return await preview_publication(
-        request, actor, None, class_alias=lambda key: _alias("class", key), handoff_ref=ref
+        request, actor, None, class_alias=lambda key: _alias("class", key),
+        handoff_ref=ref, run_id=run_id,
     )
 
 
@@ -416,6 +423,7 @@ async def execute_tool(
     name: str,
     arguments: BaseModel,
     *,
+    run_id: str,
     cat_attachment_ref: str | None = None,
     table_summary: WorkspaceTableSummary | None = None,
 ):
@@ -546,7 +554,7 @@ async def execute_tool(
     if name == "preview_cat_publication" and isinstance(
         arguments, cat_workflow.CatHandoffSelection
     ):
-        return await preview_cat_handoff(request, actor, arguments.handoff_ref)
+        return await preview_cat_handoff(request, actor, arguments.handoff_ref, run_id=run_id)
     if name in {"list_student_assessments", "review_tasks", "school_tasks"}:
         snapshot = await _snapshot(request, actor, limit=24)
         rows = [row.model_dump(mode="json") for row in snapshot.rows]
@@ -696,12 +704,11 @@ async def execute_tool(
     if name == "preview_new_class" and isinstance(arguments, NewClass):
         _ensure_demo_admin(request, actor)
         class_ref = arguments.class_ref
-        content = f"{int(datetime.now(UTC).timestamp()) + 300}.{uuid4().hex}.{class_ref}"
         return (
             {
                 "kind": "preview_class",
                 "class_ref": class_ref,
-                "token": f"{content}.{_signature(request, actor, content)}",
+                "token": _class_token(request, actor, class_ref, run_id=run_id),
             },
             {"confirmation_required": True},
         )
@@ -755,7 +762,7 @@ async def execute_tool(
         return {"kind": "system_health", **snapshot}, snapshot
     if name == "preview_assessment_publication" and isinstance(arguments, TaskPreview):
         return await preview_publication(
-            request, actor, arguments, class_alias=lambda ref: _alias("class", ref)
+            request, actor, arguments, class_alias=lambda ref: _alias("class", ref), run_id=run_id,
         )
     if name == "open_workflow" and isinstance(arguments, Panel):
         if actor.role not in _PANEL_ROLES[arguments.workflow]:

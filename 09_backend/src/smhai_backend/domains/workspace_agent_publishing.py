@@ -17,7 +17,7 @@ from smhai_backend.domains.models import Actor
 from smhai_backend.domains.school_tasks.router import _idempotency_scope
 from smhai_backend.domains.school_tasks.schemas import TaskDto
 
-from .workspace_agent import _ensure_demo_admin, _signature
+from .workspace_agent import _ensure_demo_admin, _ensure_run_preview, _signature
 from .workspace_agent_cat import authorized_handoff
 
 _PURPOSE = "workspace-agent/publish-task/v1"
@@ -38,6 +38,7 @@ class Schedule(BaseModel):
     due_at: AwareDatetime
     activation_ref: str | None = Field(default=None, pattern=r"^CACT_[A-Za-z0-9-]{36}$")
     handoff_ref: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
+    run_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
 
 
 class TaskConfirmation(BaseModel):
@@ -52,6 +53,7 @@ async def preview(
     *,
     class_alias,
     handoff_ref: str | None = None,
+    run_id: str | None = None,
 ) -> tuple[dict, dict]:
     _ensure_demo_admin(request, actor)
     handoff = await authorized_handoff(request, actor, handoff_ref) if handoff_ref else None
@@ -89,6 +91,7 @@ async def preview(
         due_at=proposal.due_at,
         activation_ref=handoff["activation_ref"] if handoff else None,
         handoff_ref=handoff_ref,
+        run_id=run_id,
     )
     if schedule.due_at <= max(now, schedule.opens_at):
         raise error(ErrorCode.VALIDATION_FAILED, detail="the deadline must be after opening")
@@ -101,7 +104,7 @@ async def preview(
     return (
         {
             "kind": "preview_task",
-            **schedule.model_dump(mode="json", exclude={"activation_ref", "handoff_ref"}),
+            **schedule.model_dump(mode="json", exclude={"activation_ref", "handoff_ref", "run_id"}),
             "class_label": matches[0].get("display_name") or schedule.class_ref,
             "plan_label": handoff["plan_name"] if handoff else None,
             "enrolled": matches[0]["active_student_count"],
@@ -134,6 +137,7 @@ async def confirm(request: Request, actor: Actor, token: str) -> TaskDto:
         raise conflict from None
     if schedule.due_at <= datetime.now(UTC):
         raise conflict
+    _ensure_run_preview(request, actor, schedule.run_id, token=token)
     if schedule.handoff_ref:
         handoff = await authorized_handoff(request, actor, schedule.handoff_ref, replay=True)
         if handoff["activation_ref"] != schedule.activation_ref:
@@ -147,7 +151,7 @@ async def confirm(request: Request, actor: Actor, token: str) -> TaskDto:
                     return TaskDto.model_validate(task)
             raise conflict
     payload = schedule.model_dump(
-        mode="json", exclude={"class_ref", "handoff_ref"}, exclude_none=True
+        mode="json", exclude={"class_ref", "handoff_ref", "run_id"}, exclude_none=True
     )
     scope = (
         fingerprint({"school": actor.school_ref, "handoff": schedule.handoff_ref})

@@ -71,6 +71,10 @@ const finishLabels = {
 const events = ref<WorkspaceEvent[]>([])
 const replacedRuns = computed(() => new Set(events.value.flatMap((event) =>
   event.type === 'start' && event.replaces_run_id ? [event.replaces_run_id] : [])))
+const inactivePreviewRuns = computed(() => new Set([
+  ...replacedRuns.value,
+  ...events.value.flatMap((event) => event.type === 'end' && event.status !== 'completed' ? [event.run_id] : []),
+]))
 const revisions = computed(() => new Set(events.value.flatMap((event) =>
   event.type === 'start' && event.replaces_run_id ? [event.run_id] : [])))
 const timeline = computed(() => events.value.filter((event) => !['start', 'status', 'tool_started'].includes(event.type)
@@ -110,10 +114,10 @@ const assessmentId = ref('')
 const assessmentChecking = ref(false)
 const assessmentStarting = ref(false)
 const assessmentComplete = ref(false)
-const pendingClass = ref<{ class_ref: string; token: string }>()
+const pendingClass = ref<{ class_ref: string; token: string; runId: string }>()
 const submittedClasses = ref(new Set<string>())
 const classBusy = ref(false)
-const pendingPublication = ref<TaskPublicationPreview & { catDraft?: CatDraft }>()
+const pendingPublication = ref<TaskPublicationPreview & { runId: string; catDraft?: CatDraft }>()
 const publicationBusy = ref(false)
 const publishedTokens = ref(new Set<string>())
 const catReceipts = ref(new Map<string, CatDraft>())
@@ -431,6 +435,11 @@ async function startAssessment() {
 async function confirmClass() {
   const preview = pendingClass.value
   if (classBusy.value || !preview) return
+  if (inactivePreviewRuns.value.has(preview.runId)) {
+    pendingClass.value = undefined
+    message.value = '此建班预览已失效，请重新生成'
+    return
+  }
   classBusy.value = true
   message.value = ''
   try {
@@ -439,8 +448,11 @@ async function confirmClass() {
     submittedClasses.value.add(preview.token)
     pendingClass.value = undefined
     emit('changed')
-  } catch {
-    message.value = '无法确认班级已创建，请重新查询班级或生成新预览'
+  } catch (cause) {
+    if (cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict') {
+      await refresh().catch((cause) => historyFailure(cause, '暂时无法核对当前预览'))
+    }
+    if (!scopeBlocked.value) message.value = '无法确认班级已创建，请重新查询班级或生成新预览'
     pendingClass.value = undefined
   } finally {
     classBusy.value = false
@@ -450,6 +462,11 @@ async function confirmClass() {
 async function publishTask() {
   const preview = pendingPublication.value
   if (!preview || publicationBusy.value) return
+  if (inactivePreviewRuns.value.has(preview.runId)) {
+    pendingPublication.value = undefined
+    message.value = '此发布预览已失效，请重新生成'
+    return
+  }
   publicationBusy.value = true
   message.value = ''
   try {
@@ -462,15 +479,18 @@ async function publishTask() {
     }
     pendingPublication.value = undefined
     emit('changed')
-  } catch {
-    message.value = '暂时无法核实发布结果，请查询学校任务'
+  } catch (cause) {
+    if (cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict') {
+      await refresh().catch((cause) => historyFailure(cause, '暂时无法核对当前预览'))
+    }
+    if (!scopeBlocked.value) message.value = '暂时无法核实发布结果，请查询学校任务后重新生成预览'
     pendingPublication.value = undefined
   } finally {
     publicationBusy.value = false
   }
 }
 
-async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish') {
+async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish', runId: string) {
   if (catBusy.value) return
   if (action !== 'publish') {
     pendingCat.value = { draft, action }
@@ -479,8 +499,8 @@ async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish'
   catBusy.value = true
   message.value = ''
   try {
-    const preview = await previewWorkspaceCatHandoff(draft.draft_ref)
-    pendingPublication.value = { ...preview, catDraft: draft }
+    const preview = await previewWorkspaceCatHandoff(draft.draft_ref, runId)
+    pendingPublication.value = { ...preview, catDraft: draft, runId }
   } catch {
     message.value = '无法准备发布。请核对班级、截止时间和方案批准状态'
   } finally {
@@ -638,20 +658,24 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary, revisionRu
           </template>
           <div v-else-if="event.view.kind === 'preview_class'" class="agent-thread__inline">
             <span>{{ event.view.class_ref }}</span>
-            <AppButton variant="secondary" :disabled="submittedClasses.has(event.view.token)" @click="pendingClass = event.view">{{ submittedClasses.has(event.view.token) ? '已创建' : '核对并确认' }}</AppButton>
+            <AppButton v-if="submittedClasses.has(event.view.token)" variant="secondary" disabled>已创建</AppButton>
+            <small v-else-if="inactivePreviewRuns.has(event.run_id)">建班预览已失效</small>
+            <AppButton v-else variant="secondary" @click="pendingClass = { ...event.view, runId: event.run_id }">核对并确认</AppButton>
           </div>
           <div v-else-if="event.view.kind === 'preview_task'" class="agent-thread__inline">
             <span>{{ event.view.class_label }} · {{ event.view.enrolled }} 名学生</span>
-            <AppButton variant="secondary" :disabled="publishedTokens.has(event.view.token)" @click="pendingPublication = event.view">{{ publishedTokens.has(event.view.token) ? '已发布' : '核对发布计划' }}</AppButton>
+            <AppButton v-if="publishedTokens.has(event.view.token)" variant="secondary" disabled>已发布</AppButton>
+            <small v-else-if="inactivePreviewRuns.has(event.run_id)">发布预览已失效</small>
+            <AppButton v-else variant="secondary" @click="pendingPublication = { ...event.view, runId: event.run_id }">核对发布计划</AppButton>
           </div>
           <div v-else-if="event.view.kind === 'cat_inspection'">
             <strong>题库结构验证通过</strong>
             <p>{{ event.view.item_count }} 道题 · {{ event.view.dimension_count }} 个维度 · {{ event.view.attachment_has_config ? '包含方案配置' : '可选学校合成工程模板' }}</p>
           </div>
-          <WorkspaceCatDraft v-else-if="event.view.kind === 'cat_draft'" :draft="catReceipts.get(event.view.draft_ref) || event.view" :administrator="false" :busy="catBusy" @action="handleCat" />
+          <WorkspaceCatDraft v-else-if="event.view.kind === 'cat_draft'" :draft="catReceipts.get(event.view.draft_ref) || event.view" :administrator="false" :busy="catBusy" @action="(draft, action) => handleCat(draft, action, event.run_id)" />
           <div v-else-if="event.view.kind === 'cat_drafts' || event.view.kind === 'cat_handoffs'">
             <p v-if="!event.view.drafts.length">当前没有可查看的 CAT 草案</p>
-            <WorkspaceCatDraft v-for="draft in event.view.drafts" :key="draft.draft_ref" :draft="catReceipts.get(draft.draft_ref) || draft" :administrator="event.view.kind === 'cat_handoffs'" :busy="catBusy" @action="handleCat" />
+            <WorkspaceCatDraft v-for="draft in event.view.drafts" :key="draft.draft_ref" :draft="catReceipts.get(draft.draft_ref) || draft" :administrator="event.view.kind === 'cat_handoffs'" :busy="catBusy || (event.view.kind === 'cat_handoffs' && inactivePreviewRuns.has(event.run_id))" @action="(draft, action) => handleCat(draft, action, event.run_id)" />
           </div>
           <template v-else-if="event.view.kind === 'teacher_referral'">
             <strong>{{ supportCategories[event.view.category_code] }} · 支持转介草案</strong>

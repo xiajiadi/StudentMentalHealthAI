@@ -315,6 +315,60 @@ test('a teacher changes the requirements while a live task is running', async ({
   await expect(page.getByRole('button', { name: '下载班级统计 Word' }).last()).toBeVisible()
 })
 
+test('an administrator can only confirm the revised class after a live update', async ({ page }) => {
+  test.skip(process.env.PSYNOVA_AGENT_QA_WRITE !== '1', 'Requires a dedicated synthetic school')
+  test.setTimeout(200_000)
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const marker = randomUUID().replace(/[^a-f]/g, '').slice(0, 8)
+  const before = `qa-update-${marker}-before`
+  const after = `qa-update-${marker}-after`
+  const input = page.locator('#workspace-agent-input')
+  const cards = page.locator('.agent-thread__card')
+  const oldPreview = cards.filter({ has: page.getByText(before, { exact: true }) })
+  const newPreview = cards.filter({ has: page.getByText(after, { exact: true }) })
+
+  await input.fill(`先帮我生成班级 ${before} 的建班预览，等我核对确认。预览之后再列出学校当前测评任务`)
+  await page.getByRole('button', { name: '发送任务', exact: true }).click()
+  await page.getByRole('button', { name: '同意并发送' }).click()
+  await expect(oldPreview.getByRole('button', { name: '核对并确认' })).toBeVisible({ timeout: 70_000 })
+  await input.fill(`改一下，班级改成 ${after}，只生成新的建班预览，等我确认`)
+  const replacement = page.waitForResponse((response) =>
+    response.url().endsWith('/workspace-agent/conversation/turn')
+    && Boolean(response.request().postDataJSON()?.replaces_run_id),
+  )
+  await page.getByRole('button', { name: '发送补充' }).click()
+  expect((await replacement).ok()).toBe(true)
+  await expect(page.getByRole('button', { name: '取消任务' })).toHaveCount(0, { timeout: 105_000 })
+  await page.reload()
+  await expect(oldPreview.getByText('建班预览已失效', { exact: true })).toBeVisible()
+  await expect(oldPreview.getByRole('button', { name: '核对并确认' })).toHaveCount(0)
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(history.ok()).toBe(true)
+  const { events } = (await history.json()).data
+  const old = events.find((event) => event.view?.kind === 'preview_class' && event.view.class_ref === before)
+  const latest = events.find((event) => event.view?.kind === 'preview_class' && event.view.class_ref === after)
+  expect(events.find((event) => event.type === 'start' && event.run_id === latest.run_id)?.replaces_run_id).toBe(old.run_id)
+  const csrf = await page.request.get(origin + '/api/v1/auth/csrf')
+  const stale = await page.request.post(origin + '/api/v1/workspace-agent/confirm', {
+    headers: { Origin: origin!, 'X-CSRF-Token': (await csrf.json()).data.csrf_token },
+    data: { token: old.view.token },
+  })
+  expect(stale.status()).toBe(409)
+  expect((await stale.json()).detail).toBe('operation preview no longer active')
+  const classes = async () => {
+    const result = await page.request.get(origin + '/api/v1/school/classes')
+    expect(result.ok()).toBe(true)
+    return ((await result.json()).data as { class_ref: string }[]).map((row) => row.class_ref)
+  }
+  expect((await classes()).filter((name) => name === before || name === after)).toEqual([])
+  await newPreview.getByRole('button', { name: '核对并确认' }).click()
+  const write = page.waitForResponse((response) => response.url().endsWith('/workspace-agent/confirm'))
+  await page.getByRole('button', { name: '确认创建', exact: true }).click()
+  expect((await write).ok()).toBe(true)
+  expect((await classes()).filter((name) => name === before || name === after)).toEqual([after])
+})
+
 test('cancelling a live task releases the conversation and lets the teacher retry', async ({ page }) => {
   test.setTimeout(180_000)
   await signIn(page)

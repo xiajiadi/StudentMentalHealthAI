@@ -1530,6 +1530,92 @@ async def test_agent_prepares_publication_that_requires_school_admin_confirmatio
     assert first.kwargs["due_at"] == deadline
 
 
+@pytest.mark.parametrize("operation", ["class", "publication"])
+@pytest.mark.parametrize("interruption", ["cancel", "replace"])
+async def test_obsolete_previews_cannot_write_school_records(
+    client, tools, model_lane, operation, interruption,
+):
+    model, _ = model_lane
+    headers = await login(client)
+    await select(client, headers, "ADMIN")
+    base = f"{BASE}/conversation"
+    deadline = datetime.now(UTC) + timedelta(days=4)
+    if operation == "class":
+        tool = "preview_new_class"
+        first_args = {"class_ref": "qa-before"}
+        updated_args = {"class_ref": "qa-after"}
+        endpoint = f"{BASE}/confirm"
+        business_call = tools.create_class
+    else:
+        tool = "preview_assessment_publication"
+        first_args = {"class_designation": "合成班", "due_at": deadline.isoformat()}
+        updated_args = {**first_args, "due_at": (deadline + timedelta(days=1)).isoformat()}
+        endpoint = f"{base}/confirm-publication"
+        business_call = tools.publish_task
+
+    prompt = "准备学校操作，等待我的确认"
+    change = "请改用更新后的要求，再准备一次预览"
+    waiting = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def model_step(messages, _definitions, _context):
+        current = next(item["content"] for item in reversed(messages) if item["role"] == "user")
+        if messages[-1]["role"] != "tool":
+            return assistant_step(
+                tool=tool, arguments=json.dumps(first_args if current == prompt else updated_args),
+            )
+        if current == prompt and interruption == "cancel":
+            waiting.set()
+            await finish.wait()
+        return assistant_step(text="已准备待确认的预览")
+
+    async def confirm(token):
+        return await client.post(endpoint, headers=headers, json={"token": token})
+
+    model.side_effect = model_step
+    initial = asyncio.create_task(client.post(
+        f"{base}/turn", headers=headers, json={"text": prompt, "synthetic_only": True}
+    ))
+    try:
+        if interruption == "cancel":
+            await asyncio.wait_for(waiting.wait(), 3)
+        else:
+            await asyncio.wait_for(initial, 3)
+        events = (await client.get(base)).json()["data"]["events"]
+        old = next(event for event in events if event["type"] == "tool_result")
+        if interruption == "cancel":
+            stopped = await client.post(
+                f"{base}/cancel", headers=headers, json={"run_id": old["run_id"]}
+            )
+            assert stopped.status_code == 204
+            await asyncio.wait_for(initial, 3)
+        payload = {"text": change, "synthetic_only": True}
+        if interruption == "replace":
+            payload["replaces_run_id"] = old["run_id"]
+        revised = await client.post(f"{base}/turn", headers=headers, json=payload)
+        assert revised.status_code == 200
+        revised_events = [json.loads(line) for line in revised.text.splitlines()]
+        revised_preview = next(e["view"] for e in revised_events if e["type"] == "tool_result")
+
+        rejected = await confirm(old["view"]["token"])
+        assert rejected.status_code == 409
+        assert rejected.json()["detail"] == "operation preview no longer active"
+        business_call.assert_not_awaited()
+        for _ in range(2):
+            assert (await confirm(revised_preview["token"])).status_code == 200
+        first, replay = business_call.await_args_list
+        assert first.kwargs["idempotency"] == replay.kwargs["idempotency"]
+        if operation == "class":
+            assert first.args[1] == updated_args["class_ref"]
+        else:
+            assert first.kwargs["due_at"] == deadline + timedelta(days=1)
+    finally:
+        finish.set()
+        if not initial.done():
+            initial.cancel()
+            await asyncio.gather(initial, return_exceptions=True)
+
+
 async def test_teacher_export_comes_from_scoped_database_counts(client, model_lane):
     model, _ = model_lane
     model.side_effect = [

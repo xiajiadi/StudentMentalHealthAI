@@ -27,6 +27,8 @@ from smhai_backend.domains.school_tasks.schemas import (
     TeacherTaskProgressDto,
 )
 
+from .workspace_agent_history import workspace_owner
+
 router = APIRouter(prefix="/workspace-agent", tags=["workspace-agent"])
 _ROLE_TO_TOOL = {
     BackendRole.STUDENT: "student_tasks",
@@ -46,7 +48,8 @@ _COMMANDS = {
 }
 _CREATE = re.compile(r"(?:新建|创建)(?:班级\s+|\s+班级\s+)([A-Za-z0-9][A-Za-z0-9_.-]{0,47})")
 _CONFIRM_TOKEN = re.compile(
-    r"([0-9]{10})\.([a-f0-9]{32})\.([A-Za-z0-9][A-Za-z0-9_.-]{0,47})\.([a-f0-9]{64})"
+    r"([0-9]{10})\.([a-f0-9]{32})\.([A-Za-z0-9][A-Za-z0-9_.-]{0,47})"
+    r"(?:~([a-f0-9]{32}))?\.([a-f0-9]{64})"
 )
 _KNOWLEDGE = {
     "帮我制定复习计划": "weekly_plan",
@@ -66,7 +69,7 @@ class RunRequest(BaseModel):
 class ConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    token: str = Field(min_length=100, max_length=170)
+    token: str = Field(min_length=100, max_length=203)
 
 
 class ToolRow(BaseModel):
@@ -213,6 +216,27 @@ def _signature(
     return hmac.new(key, message.encode(), hashlib.sha256).hexdigest()
 
 
+def _class_token(
+    request: Request, actor: Actor, class_ref: str, *, run_id: str | None = None
+) -> str:
+    content = f"{int(datetime.now(UTC).timestamp()) + 300}.{uuid4().hex}.{class_ref}"
+    if run_id is not None:
+        content = f"{content}~{run_id}"
+    return f"{content}.{_signature(request, actor, content)}"
+
+
+def _ensure_run_preview(
+    request: Request, actor: Actor, run_id: str | None, *, token: str | None = None
+) -> None:
+    history = getattr(request.app.state, "workspace_history", None)
+    allowed = (
+        history.allows_confirmation(workspace_owner(actor), run_id, token=token)
+        if history is not None else run_id is None
+    )
+    if not allowed:
+        raise error(ErrorCode.WORKFLOW_CONFLICT, detail="operation preview no longer active")
+
+
 @router.get("/snapshot")
 async def snapshot(request: Request, actor: CurrentActor):
     _check_actor(actor)
@@ -231,11 +255,10 @@ async def run(request: Request, payload: RunRequest, actor: CsrfActor):
     elif actor.role is BackendRole.ADMIN and (match := _CREATE.fullmatch(command)):
         _ensure_demo_admin(request, actor)
         class_ref = match[1]
-        content = f"{int(datetime.now(UTC).timestamp()) + 300}.{uuid4().hex}.{class_ref}"
         result = ToolResult(
             kind="preview_class",
             class_ref=class_ref,
-            token=f"{content}.{_signature(request, actor, content)}",
+            token=_class_token(request, actor, class_ref),
         )
     else:
         result = ToolResult(kind="unknown")
@@ -250,12 +273,13 @@ async def confirm(request: Request, payload: ConfirmRequest, actor: CsrfActor):
     match = _CONFIRM_TOKEN.fullmatch(payload.token)
     if not match:
         raise error(ErrorCode.WORKFLOW_CONFLICT, detail="operation preview is invalid or expired")
-    expires, nonce, class_ref, signature = match.groups()
-    content = f"{expires}.{nonce}.{class_ref}"
+    expires, nonce, class_ref, run_id, signature = match.groups()
+    content = payload.token.rsplit(".", 1)[0]
     if int(expires) < int(datetime.now(UTC).timestamp()) or not hmac.compare_digest(
         signature, _signature(request, actor, content)
     ):
         raise error(ErrorCode.WORKFLOW_CONFLICT, detail="operation preview is invalid or expired")
+    _ensure_run_preview(request, actor, run_id, token=payload.token)
     result = await request.app.state.container.school_tasks.create_class(
         actor,
         class_ref,
