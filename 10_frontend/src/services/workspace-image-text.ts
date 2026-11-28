@@ -5,16 +5,19 @@ import {
   detectWorkspaceBarChart, readWorkspaceBarChart, readWorkspaceLineChart, workspaceChartRaster,
 } from './workspace-image-chart'
 import { formulaPixelBounds, type FormulaRegion } from './workspace-formula-region'
+import { readWorksheetFormulaRegions } from './workspace-formula-suggestions'
 
 export type WorkspaceChartPreview = { kind: 'bar' | 'stacked-bar' | 'line'; text: string }
 
-function readWords(page: Page) {
+function readWordLines(page: Page) {
   return page.blocks?.flatMap((block) => block.paragraphs.flatMap((paragraph) =>
-    paragraph.lines.flatMap((line) => line.words),
+    paragraph.lines.map((line) => line.words),
   )) ?? []
 }
 
-export async function readWorkspaceImage(file: File, signal: AbortSignal): Promise<{ text: string; chart?: WorkspaceChartPreview }> {
+export async function readWorkspaceImage(file: File, signal: AbortSignal): Promise<{
+  text: string; chart?: WorkspaceChartPreview; formulaSuggestions?: FormulaRegion[]
+}> {
   if (!file.size || file.size > 4 * 1024 * 1024) {
     throw new Error('请选择不超过 4 MiB 的 PNG、JPEG 或 WebP 图片')
   }
@@ -55,11 +58,12 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
     worker = await Promise.race([loading, interruption])
     const result = await Promise.race([worker.recognize(file, {}, { blocks: true }), interruption])
     const content = result.data.text.trim()
-    if (!content) return { text: '' }
     if (content.length > 3_000) throw new Error('请选择只包含所需文字的图片')
-    const words = readWords(result.data)
+    const lines = readWordLines(result.data)
+    const words = lines.flat()
+    const withFormulaSuggestions = () => ({ text: content, formulaSuggestions: readWorksheetFormulaRegions(bitmap, lines) })
     const raster = workspaceChartRaster(bitmap, words)
-    if (!raster) return { text: content }
+    if (!raster) return withFormulaSuggestions()
     const barChart = detectWorkspaceBarChart(raster, words)
     let barValues = barChart && readWorkspaceBarChart(barChart, words)
     if (barChart && !barValues) {
@@ -69,11 +73,11 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
       }), interruption])
       const rectangle = { left: 0, top: 0, width: barChart.axisWidth, height: bitmap.height }
       const axis = await Promise.race([worker.recognize(file, { rectangle }, { blocks: true }), interruption])
-      barValues = readWorkspaceBarChart(barChart, words, readWords(axis.data))
+      barValues = readWorkspaceBarChart(barChart, words, readWordLines(axis.data).flat())
     }
     if (barChart && barValues) return { text: content, chart: { kind: barChart.kind, text: barValues } }
     const lineValues = readWorkspaceLineChart(raster, words)
-    return { text: content, chart: lineValues ? { kind: 'line', text: lineValues } : undefined }
+    return lineValues ? { text: content, chart: { kind: 'line', text: lineValues } } : withFormulaSuggestions()
   } finally {
     expired = true
     bitmap.close()

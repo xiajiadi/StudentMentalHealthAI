@@ -1070,6 +1070,8 @@ test('a learner crops formulas from a worksheet and sends only the reviewed text
   await preview.getByRole('button', { name: '在原图框选公式' }).click()
   const recognizeRegion = preview.getByRole('button', { name: '交给学校服务识别选区' })
   await expect(recognizeRegion).toBeDisabled()
+  const suggestions = preview.getByRole('group', { name: '候选公式' })
+  await expect(suggestions.getByRole('button')).toHaveCount(2)
   const image = preview.getByRole('img', { name: '在原图上框选公式' })
   await image.scrollIntoViewIfNeeded()
   const imageBounds = (await image.boundingBox())!
@@ -1084,30 +1086,48 @@ test('a learner crops formulas from a worksheet and sends only the reviewed text
     await edge.fill(value)
     await edge.press('Tab')
   }
-  await setEdge('左边界', '19.2')
-  await setEdge('右边界', '81.2')
-  await setEdge('上边界', '27.3')
-  await setEdge('下边界', '58.4')
+  const first = suggestions.getByRole('button', { name: '第 1 处' })
+  await first.click()
+  await expect(first).toHaveAttribute('aria-pressed', 'true')
+  const edgeValue = async (name: string) => Number(await preview.getByRole('spinbutton', { name }).inputValue())
+  const [left, top, right, bottom] = await Promise.all(['左边界', '上边界', '右边界', '下边界'].map(edgeValue))
+  expect(top).toBeGreaterThan(22)
+  expect(bottom).toBeLessThan(64)
+  const automaticCrop = {
+    ...expectedCrop,
+    width: Math.floor(520 * right / 100) - Math.ceil(520 * left / 100),
+    height: Math.floor(530 * bottom / 100) - Math.ceil(530 * top / 100),
+  }
+  expect(automaticCrop.width).toBeLessThan(360)
+  expect(automaticCrop.height).toBeLessThan(200)
   await preview.screenshot({ path: testInfo.outputPath('worksheet-selection.png') })
   expect(writePaths).toHaveLength(2)
   const originalText = await editor.inputValue()
   const result = preview.getByRole('status', { name: '上次识别的公式' })
-  const readRegion = async (expected: RegExp) => {
+  const readRegion = async (expected: RegExp, crop = expectedCrop) => {
     const pending = page.waitForResponse((response) => response.url().endsWith('/conversation/formula-preview'))
     await recognizeRegion.click()
     const response = await pending
     expect(response.ok()).toBe(true)
     expect(response.headers()['cache-control']).toBe('no-store')
-    expect(await readEncoded()).toEqual(expectedCrop)
+    expect(await readEncoded()).toEqual(crop)
     await expect(result).toHaveText(expected)
   }
-  await readRegion(addition)
+  await readRegion(addition, automaticCrop)
   expect(await editor.inputValue()).toBe(originalText)
   await preview.getByRole('button', { name: '加入预览文字' }).click()
   await expect(editor).toHaveValue(addition)
   const withAddition = await editor.inputValue()
   expect(withAddition.startsWith(originalText.trim())).toBe(true)
 
+  const second = suggestions.getByRole('button', { name: '第 2 处' })
+  await image.scrollIntoViewIfNeeded()
+  const lower = (await image.boundingBox())!
+  await page.mouse.click(lower.x + lower.width * 0.5, lower.y + lower.height * 0.8)
+  await expect(second).toHaveAttribute('aria-pressed', 'true')
+  expect(await edgeValue('上边界')).toBeGreaterThan(62)
+  await setEdge('左边界', '19.2')
+  await setEdge('右边界', '81.2')
   await setEdge('上边界', '65')
   await setEdge('下边界', '96.1')
   await readRegion(subtraction)

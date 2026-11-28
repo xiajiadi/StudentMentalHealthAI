@@ -141,7 +141,10 @@ const maxCommandLength = computed(() => agentMode.value ? 3000 : role.value === 
 const fileInput = ref<HTMLInputElement>()
 const attachmentOpen = ref(false)
 type DocumentPreview = { file: File; characters: number; previewLength: number }
-const attachment = ref<{ name: string; content: string; image?: File; chart?: WorkspaceChartPreview; document?: DocumentPreview }>()
+const attachment = ref<{
+  name: string; content: string; image?: File; chart?: WorkspaceChartPreview
+  document?: DocumentPreview; formulaSuggestions?: FormulaRegion[]
+}>()
 const attachmentImageUrl = ref('')
 const editingFormulaRegion = ref(false)
 const formulaRegion = ref<FormulaRegion>({ left: 0, top: 0, right: 0, bottom: 0 })
@@ -374,6 +377,7 @@ async function openAttachment(file: File) {
     }
     let content: string
     let chart: WorkspaceChartPreview | undefined
+    let formulaSuggestions: FormulaRegion[] | undefined
     let documentPreview: DocumentPreview | undefined
     if (image) {
       attachmentReading.value = 'image'
@@ -381,6 +385,7 @@ async function openAttachment(file: File) {
       const result = await readWorkspaceImage(file, request.signal)
       content = result.text
       chart = result.chart
+      formulaSuggestions = result.formulaSuggestions
     } else if (kind === 'pdf' || kind === 'docx') {
       if (!file.size || file.size > 5 * 1024 * 1024) throw new Error('请选择不超过 5 MiB 的 PDF 或 DOCX')
       attachmentReading.value = 'document'
@@ -397,7 +402,7 @@ async function openAttachment(file: File) {
       character.charCodeAt(0) < 32 && !['\t', '\r', '\n'].includes(character))
     if ((!content && !image) || hasControlCharacter) throw new Error()
     if (!request.signal.aborted) {
-      attachment.value = { name: file.name, content, image: image ? file : undefined, chart, document: documentPreview }
+      attachment.value = { name: file.name, content, image: image ? file : undefined, chart, document: documentPreview, formulaSuggestions }
       attachmentOpen.value = true
     }
   } catch (error) {
@@ -768,7 +773,10 @@ function dateLabel(value: string) {
       @update:open="(open) => { if (!open) closeAttachment() }"
     >
       <strong>{{ attachment?.name }}</strong>
-      <WorkspaceFormulaRegion v-if="attachmentImageUrl" v-model="formulaRegion" :source="attachmentImageUrl" :editing="editingFormulaRegion" :disabled="Boolean(attachmentReading)" />
+      <WorkspaceFormulaRegion
+        v-if="attachmentImageUrl" v-model="formulaRegion" :source="attachmentImageUrl" :editing="editingFormulaRegion"
+        :disabled="Boolean(attachmentReading)" :suggestions="attachment?.formulaSuggestions"
+      />
       <div v-if="editingFormulaRegion && regionFormula" class="workspace-agent__formula-result">
         <output aria-label="上次识别的公式">{{ regionFormula }}</output>
         <AppButton variant="secondary" size="sm" :disabled="Boolean(attachmentReading)" @click="appendRegionFormula">加入预览文字</AppButton>
