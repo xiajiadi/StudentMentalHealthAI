@@ -69,6 +69,12 @@ const finishLabels = {
   step_limit: '本次运行已达到步骤上限，可继续补充需求',
 }
 const events = ref<WorkspaceEvent[]>([])
+const taskStarts = computed(() => new Map(events.value.flatMap((event) =>
+  event.type === 'start' ? [[event.run_id, event] as const] : [])))
+const selectedCatRun = ref<string>()
+const selectedCat = computed(() => selectedCatRun.value
+  ? taskStarts.value.get(selectedCatRun.value)
+  : undefined)
 const replacedRuns = computed(() => new Set(events.value.flatMap((event) =>
   event.type === 'start' && event.replaces_run_id ? [event.replaces_run_id] : [])))
 const inactivePreviewRuns = computed(() => new Set([
@@ -85,9 +91,9 @@ const stopping = ref(false)
 const replacing = ref(false)
 const scopeBlocked = ref(false)
 const running = computed(() => sending.value || Boolean(activeRun.value))
-const activeNeedsAttachment = computed(() => events.value.some((event) =>
-  event.type === 'start' && event.run_id === activeRun.value && event.requires_attachment))
-const missingActiveAttachment = computed(() => activeNeedsAttachment.value
+const activeStart = computed(() => activeRun.value ? taskStarts.value.get(activeRun.value) : undefined)
+const missingActiveAttachment = computed(() => activeStart.value?.requires_attachment
+  && activeStart.value.cat_attachment_state !== 'available'
   && !(props.roster || props.catFile || props.tableSummary))
 const revisionRunId = computed(() => !stopping.value && !replacing.value
   && !missingActiveAttachment.value && activeRun.value
@@ -129,9 +135,12 @@ const failedRun = computed(() => {
   const event = events.value.at(-1)
   return event?.type === 'end' && ['failed', 'interrupted'].includes(event.status) ? event.run_id : undefined
 })
-const retryNeedsAttachment = computed(() => Boolean(failedRun.value && events.value.some((event) =>
-  event.run_id === failedRun.value && event.type === 'start' && event.requires_attachment)))
-const retryRevisionId = computed(() => failedRun.value && revisions.value.has(failedRun.value)
+const failedStart = computed(() => failedRun.value ? taskStarts.value.get(failedRun.value) : undefined)
+const retryNeedsAttachment = computed(() => failedStart.value?.requires_attachment
+  && failedStart.value.cat_attachment_state !== 'available')
+const retryRevisionId = computed(() => failedRun.value && (
+  revisions.value.has(failedRun.value) || failedStart.value?.cat_attachment_state === 'available'
+)
   ? failedRun.value : undefined)
 const retryText = computed(() => {
   if (!failedRun.value || retryNeedsAttachment.value) return ''
@@ -159,8 +168,15 @@ watch(() => props.roster, (roster) => {
 })
 watch(() => props.catFile, (file) => {
   uploadedCat = undefined
+  if (file) selectedCatRun.value = undefined
   if (file && /\.csv$/i.test(file.name)) panel.value = 'cat'
 })
+
+function selectCatSource(runId: string) {
+  if (running.value || props.catFile || taskStarts.value.get(runId)?.cat_attachment_state !== 'available') return
+  selectedCatRun.value = runId
+  message.value = ''
+}
 
 function showProgress(event: WorkspaceEvent) {
   if (event.type === 'status') progress.value = progressLabels[event.status]
@@ -173,6 +189,7 @@ function historyFailure(cause: unknown, fallback: string) {
   if (['auth_session_expired', 'auth_session_revoked', 'forbidden'].includes(code)) {
     scopeBlocked.value = true
     events.value = []
+    selectedCatRun.value = undefined
     activeRun.value = undefined
     stopping.value = false
     lastText.value = lastSentRun.value = ''
@@ -253,6 +270,12 @@ async function submit(text: string, replacesRunId?: string) {
   if (disposed || scopeBlocked.value || rosterWorkbench.value?.busy || consentOpen.value || !text.trim()) return false
   if (!canSubmit()) return false
   const file = props.catFile
+  const source = !file && !replacesRunId ? selectedCat.value : undefined
+  if (!file && !replacesRunId && selectedCatRun.value && source?.cat_attachment_state !== 'available') {
+    message.value = '这份题库已过期或当前无法读取，请重新上传'
+    selectedCatRun.value = undefined
+    return false
+  }
   const csv = Boolean(file && /\.csv$/i.test(file.name))
   if (csv && !props.catCsvConfirmed) return false
   if (!consent.value) {
@@ -313,16 +336,23 @@ async function submit(text: string, replacesRunId?: string) {
       if (event.type === 'tool_result' && event.view.kind === 'staff_roster_import') openPanel('staff')
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
       void nextTick(() => { if (viewport.value) viewport.value.scrollTop = viewport.value.scrollHeight })
-    }, request.signal, catRef, props.tableSummary, replacesRunId)
+    }, request.signal, catRef, props.tableSummary, replacesRunId, source?.run_id)
     if (replacesRunId) await refresh().catch((cause) => historyFailure(cause, '暂时无法核对更新后的任务记录'))
     return true
   } catch (cause) {
     if (!disposed && runRequest === request) {
       const changed = replacesRunId && cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict'
-      message.value = changed ? '任务状态已变化，请核对后再次发送补充要求'
+      const catUnavailable = (file || source || (replacesRunId && taskStarts.value.get(replacesRunId)?.cat_attachment_state))
+        && cause instanceof RealApiError && cause.code.toLowerCase() === 'resource_not_found'
+      if (catUnavailable) {
+        selectedCatRun.value = undefined
+        uploadedCat = undefined
+      }
+      message.value = catUnavailable ? '这份题库已过期或当前无法读取，请重新上传'
+        : changed ? '任务状态已变化，请核对后再次发送补充要求'
         : request.signal.aborted ? '已取消附件上传' : '连接中断，正在核对已提交的任务'
       await refresh().catch((cause) => historyFailure(cause, '连接中断，可刷新对话后继续'))
-      if (!changed && !disposed && !activeRun.value && !failedRun.value && !scopeBlocked.value) message.value = '连接中断，可刷新对话后继续'
+      if (!catUnavailable && !changed && !disposed && !activeRun.value && !failedRun.value && !scopeBlocked.value) message.value = '连接中断，可刷新对话后继续'
     }
     return false
   } finally {
@@ -343,6 +373,7 @@ async function reset() {
   try {
     await resetWorkspaceConversation()
     events.value = []
+    selectedCatRun.value = undefined
     message.value = ''
     lastText.value = ''
     lastSentRun.value = ''
@@ -596,7 +627,13 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary, revisionRu
     </div>
     <div v-if="timeline.length" ref="viewport" class="agent-thread__timeline">
       <template v-for="(event, index) in timeline" :key="event.run_id + ':' + index">
-        <div v-if="event.type === 'user'" class="agent-thread__user"><small v-if="revisions.has(event.run_id)">补充要求<br /></small>{{ event.text }}</div>
+        <div v-if="event.type === 'user'" class="agent-thread__user">
+          <small v-if="revisions.has(event.run_id)">补充要求<br /></small>{{ event.text }}
+          <div v-if="taskStarts.get(event.run_id)?.cat_attachment_state" class="agent-thread__inline">
+            <AppButton v-if="taskStarts.get(event.run_id)?.cat_attachment_state === 'available'" variant="quiet" :disabled="running || Boolean(catFile)" :aria-pressed="selectedCatRun === event.run_id" @click="selectCatSource(event.run_id)">继续使用这份题库</AppButton>
+            <small v-else>题库附件已过期</small>
+          </div>
+        </div>
         <div v-else-if="event.type === 'answer'" class="agent-thread__answer">
           <strong>PsyNova</strong>
           <WorkspaceAnswer :text="event.text" />
@@ -770,6 +807,10 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary, revisionRu
     </div>
     <p v-if="retryNeedsAttachment && !running">重新添加附件后可继续任务</p>
     <AppButton v-if="retryText && !running" variant="quiet" @click="submit(retryText, retryRevisionId)">重试任务</AppButton>
+    <div v-if="selectedCat" class="agent-thread__inline">
+      <span role="status">已选用会话中上传的合成 CAT 题库</span>
+      <AppButton variant="quiet" :disabled="running" @click="selectedCatRun = undefined">移除已上传题库</AppButton>
+    </div>
     <AppCard v-if="assessmentTask" class="agent-thread__card">
       <header class="agent-thread__inline"><strong>心理测评</strong><AppButton variant="quiet" :disabled="assessmentChecking || assessmentStarting" @click="assessmentTask = ''; assessmentId = ''">{{ assessmentComplete ? '收起测评' : '暂时退出' }}</AppButton></header>
       <p v-if="assessmentChecking" role="status">正在核对测评进度</p>

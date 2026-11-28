@@ -543,9 +543,12 @@ async def execute_tool(
         if name == "prepare_specialist_support_plan":
             return {"kind": "specialist_support_plan", **summary}, summary
         return {"kind": name, **summary}, summary
-    if name == "inspect_cat_attachment":
+    if name == "inspect_cat_attachment" and cat_attachment_ref:
         return await cat_workflow.inspect(request, actor, cat_attachment_ref)
-    if name == "prepare_cat_draft" and isinstance(arguments, cat_workflow.CatDraftProposal):
+    if (
+        name == "prepare_cat_draft" and cat_attachment_ref
+        and isinstance(arguments, cat_workflow.CatDraftProposal)
+    ):
         return await cat_workflow.prepare(request, actor, arguments, cat_attachment_ref)
     if name == "list_cat_drafts":
         return cat_workflow.drafts(request, actor)

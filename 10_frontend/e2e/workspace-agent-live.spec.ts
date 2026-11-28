@@ -2070,6 +2070,55 @@ test('a specialist reviews facts and saves an authorized synthetic support plan'
   expect((await teacherCopy.json()).data.plan).toBeNull()
 })
 
+test('a specialist reopens a private CAT upload and prepares a draft without uploading again', async ({ page }) => {
+  test.setTimeout(200_000)
+  await signIn(page)
+  await chooseRole(page, 'PSYCHOLOGICAL_SPECIALIST', '/specialist/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const file = new URL('../../01_cat-engine/fixtures/synthetic_item_bank.v1.json', import.meta.url)
+  const body = await readFile(file)
+  const { items } = JSON.parse(body.toString('utf8'))
+  const writes: string[] = []
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname
+    if (request.method() === 'POST' && path.startsWith('/api/v1/workspace-agent/')) writes.push(path)
+  })
+  await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+    name: 'synthetic-private-resume.json',
+    mimeType: 'application/json',
+    buffer: body,
+  })
+  const upload = page.waitForResponse((response) => response.url().endsWith('/conversation/cat-attachment'))
+  const first = await ask(page, '先校验这个合成 CAT 题库的题数和结构，等我核对后再准备草案', '发送任务')
+  const uploaded = await upload
+  expect(uploaded.status()).toBe(201)
+  const privateRef = (await uploaded.json()).data.ref
+  expect(first[0].cat_attachment_state).toBe('available')
+  expect(first.find((event) => event.view?.kind === 'cat_inspection')?.view.item_count).toBe(items.length)
+  expect(JSON.stringify(first)).not.toContain(privateRef)
+
+  await page.reload()
+  const reuse = page.getByRole('button', { name: '继续使用这份题库', exact: true }).last()
+  await reuse.click()
+  await expect(page.getByText('已选用会话中上传的合成 CAT 题库', { exact: true })).toBeVisible()
+  const request = page.waitForRequest((item) =>
+    item.url().endsWith('/conversation/turn') && Boolean(item.postDataJSON()?.cat_source_run_id))
+  const name = '续接工程方案' + randomUUID().replace(/[^a-f]/g, '').slice(0, 8)
+  const second = await ask(page, `继续使用刚选好的题库。请用学校合成工程模板，给合成验证班准备一个方案草案，名称为 ${name}，七天后晚八点截止。先给我核对，暂不保存`, '发送任务')
+  const sent = (await request).postDataJSON()
+  expect(sent.cat_source_run_id).toBe(first[0].run_id)
+  expect(sent.cat_attachment_ref).toBeUndefined()
+  const result = second.find((event) => event.view?.kind === 'cat_draft')?.view
+  expect(result).toMatchObject({ plan_name: name, item_count: items.length, state: 'PREVIEW' })
+  expect(second[0].cat_attachment_state).toBe('available')
+  const history = await page.request.get(origin + '/api/v1/workspace-agent/conversation')
+  expect(history.ok()).toBe(true)
+  const serialized = await history.text()
+  expect(serialized).not.toContain(privateRef)
+  expect(serialized).not.toContain('synthetic-private-resume.json')
+  expect(writes.filter((path) => !path.endsWith('/turn'))).toEqual(['/api/v1/workspace-agent/conversation/cat-attachment'])
+})
+
 test('a specialist approves a synthetic CAT plan and an administrator publishes it', async ({ page }) => {
   const className = process.env.PSYNOVA_AGENT_QA_CLASS
   const useCsv = process.env.PSYNOVA_AGENT_QA_CAT_CSV === '1'

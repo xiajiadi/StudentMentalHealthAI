@@ -42,6 +42,7 @@ def tools(app, monkeypatch):
         SchoolRoleContext("qa-teacher", BackendRole.TEACHER, 1, FIRST),
         SchoolRoleContext("qa-student", BackendRole.STUDENT, 1, FIRST),
         SchoolRoleContext("qa-specialist", BackendRole.PSYCHOLOGICAL_SPECIALIST, 1, FIRST),
+        SchoolRoleContext("qa-specialist-other", BackendRole.PSYCHOLOGICAL_SPECIALIST, 2, SECOND),
     )
     user = SyntheticUser(
         user_id="USER_workspace_qa",
@@ -1807,6 +1808,86 @@ async def test_cat_csv_requires_confirmation_and_rejects_invalid_records_before_
     with app.state.workspace_history.cat.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM workspace_cat_attachment").fetchone()[0] == 0
     model.assert_not_awaited()
+
+
+async def test_cat_follow_up_uses_only_the_selected_scoped_upload(
+    client, app, model_lane, monkeypatch,
+):
+    model, _ = model_lane
+    base = f"{BASE}/conversation"
+    headers = await login(client)
+    await select(client, headers, "PSYCHOLOGICAL_SPECIALIST")
+    bank = json.loads((FIXTURES / "synthetic_item_bank.v1.json").read_text(encoding="utf-8"))
+    bank["items"][0]["stem"] = "SYNTHETIC_PRIVATE_ORIGINAL"
+    check = AsyncMock(return_value=SimpleNamespace(
+        item_count=len(bank["items"]), dimension_count=1,
+    ))
+    monkeypatch.setattr(
+        app.state.container, "cat_assets", SimpleNamespace(validate_documents=check)
+    )
+
+    async def upload(document):
+        result = await client.post(f"{base}/cat-attachment", headers=headers, json=document)
+        assert result.status_code == 201
+        return result.json()["data"]["ref"]
+
+    async def turn(**options):
+        return await client.post(
+            f"{base}/turn", headers=headers,
+            json={"text": "核对选中的合成题库", "synthetic_only": True, **options},
+        )
+
+    async def inspect(messages, definitions, _context):
+        assert "SYNTHETIC_PRIVATE_ORIGINAL" not in json.dumps(messages)
+        names = {definition["function"]["name"] for definition in definitions}
+        assert {"inspect_cat_attachment", "prepare_cat_draft"} <= names
+        if messages[-1]["role"] == "tool":
+            return assistant_step(text="题库已通过结构检查")
+        return assistant_step(tool="inspect_cat_attachment")
+
+    model.side_effect = inspect
+    ref = await upload(bank)
+    original = await turn(attachment="cat_bank", cat_attachment_ref=ref)
+    assert original.status_code == 200
+    start = json.loads(original.text.splitlines()[0])
+    assert start["cat_attachment_state"] == "available"
+    assert ref not in original.text
+    source = start["run_id"]
+    other = {**bank, "items": bank["items"][1:]}
+    other_ref = await upload(other)
+    history = await client.get(base)
+    assert ref not in history.text and other_ref not in history.text
+    assert "SYNTHETIC_PRIVATE_ORIGINAL" not in history.text
+    assert history.json()["data"]["events"][0] == start
+
+    for school in (SECOND, FIRST):
+        await select(client, headers, "PSYCHOLOGICAL_SPECIALIST", school)
+        response = await turn(cat_source_run_id=source)
+        assert response.status_code == (404 if school == SECOND else 200)
+    follow_up_start = json.loads(response.text.splitlines()[0])
+    assert follow_up_start["cat_source_run_id"] == source
+    assert follow_up_start["cat_attachment_state"] == "available"
+    corrected = await turn(replaces_run_id=follow_up_start["run_id"])
+    assert corrected.status_code == 200
+    assert json.loads(corrected.text.splitlines()[0])["cat_attachment_state"] == "available"
+    assert check.await_count == 3
+    assert all(call.args[1] == bank for call in check.await_args_list)
+    assert ref not in json.dumps([call.args[0] for call in model.await_args_list])
+
+    async def unrelated(messages, definitions, _context):
+        names = {definition["function"]["name"] for definition in definitions}
+        assert not {"inspect_cat_attachment", "prepare_cat_draft"} & names
+        assert not any('"item_count"' in item["content"] for item in messages)
+        return assistant_step(text="请先选择题库")
+
+    model.side_effect = unrelated
+    assert (await turn()).status_code == 200
+    assert check.await_count == 3
+    at = datetime.now(UTC) + timedelta(hours=25)
+    monkeypatch.setattr("smhai_backend.domains.workspace_agent_cat_store.time", at.timestamp)
+    expired = await client.get(base)
+    assert expired.json()["data"]["events"][0]["cat_attachment_state"] == "expired"
+    assert (await turn(cat_source_run_id=source)).status_code == 404
 
 
 @pytest.mark.parametrize("file_format", ["json", "csv"])

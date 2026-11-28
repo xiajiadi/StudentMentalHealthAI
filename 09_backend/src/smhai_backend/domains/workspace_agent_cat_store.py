@@ -67,13 +67,20 @@ class WorkspaceCatStore:
             (time() - _PREVIEW_LIFETIME,),
         )
 
-    def attachment(self, owner: str, ref: str | None) -> tuple[str, dict]:
+    def available_attachments(self, owner: str) -> set[str]:
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT ref FROM workspace_cat_attachment WHERE owner=? AND created>?",
+                (owner, time() - _ATTACHMENT_LIFETIME),
+            ).fetchall()
+        return {row[0] for row in rows}
+
+    def attachment(self, owner: str, ref: str) -> tuple[str, dict]:
         with closing(self.connect()) as db:
             row = db.execute(
                 """SELECT ref, document FROM workspace_cat_attachment
-                   WHERE owner=? AND created>? AND (? IS NULL OR ref=?)
-                   ORDER BY created DESC LIMIT 1""",
-                (owner, time() - _ATTACHMENT_LIFETIME, ref, ref),
+                   WHERE owner=? AND ref=? AND created>?""",
+                (owner, ref, time() - _ATTACHMENT_LIFETIME),
             ).fetchone()
         if row is None:
             raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="CAT attachment missing or expired")

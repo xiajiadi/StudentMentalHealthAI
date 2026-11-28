@@ -112,11 +112,14 @@ For a school CAT attachment, use inspect_cat_attachment, then prepare_cat_draft 
 for a plan. Ask for the intended class or deadline if missing. Only a specialist can confirm
 saving and separately approve synthetic eligibility. An administrator can list approved CAT
 handoffs and preview publication. Never use the default assessment tool for a CAT handoff.
+If the CAT attachment tools are unavailable, ask the specialist to select a file in the
+conversation or attach it. Use list_cat_drafts to check saved drafts.
 CAT source documents remain on the school server. The independent CAT workbench is available
 for simulations."""
 
 _LIVE_LOOKUPS = {
-    "class_progress", "inspect_school_library", "list_cat_drafts", "list_cat_handoffs",
+    "class_progress", "inspect_cat_attachment", "inspect_school_library", "list_cat_drafts",
+    "list_cat_handoffs",
     "list_published_feedback",
     "list_student_assessments", "make_class_progress_report", "open_published_feedback",
     "professional_review_queue", "review_tasks", "school_student_counts", "school_tasks",
@@ -141,6 +144,7 @@ class TurnRequest(BaseModel):
     synthetic_only: Literal[True]
     attachment: Literal["student_roster", "staff_roster", "cat_bank"] | None = None
     cat_attachment_ref: str | None = Field(default=None, pattern=cat_workflow.REF)
+    cat_source_run_id: str | None = Field(default=None, pattern=_RUN_ID)
     table_summary: WorkspaceTableSummary | None = None
     replaces_run_id: str | None = Field(default=None, pattern=_RUN_ID)
 
@@ -224,7 +228,8 @@ def _continuing_runs(history: list[dict], run_id: str | None) -> frozenset[str]:
     runs: list[str] = []
     while run_id is not None and run_id not in runs:
         runs.append(run_id)
-        run_id = starts.get(run_id, {}).get("replaces_run_id")
+        start = starts.get(run_id, {})
+        run_id = start.get("replaces_run_id") or start.get("cat_source_run_id")
     # Keep the original request and the latest edits within the Safety input limit.
     return frozenset(runs[:4] + runs[-1:])
 
@@ -234,11 +239,16 @@ def _context_messages(
 ) -> list[dict]:
     today = datetime.now(_CHINA).date().isoformat()
     system = f"{_SYSTEM}\nRole: {actor.role.value}. Today is {today} (UTC+08:00)."
-    if continuing_runs:
+    if payload.replaces_run_id:
         system += (
             "\nThe latest user message updates an existing task. Apply the new requirements and "
             "retain unaffected requirements from the earlier messages. Work already delivered "
             "can be read through tools. Refresh business facts before using them."
+        )
+    elif payload.cat_source_run_id:
+        system += (
+            "\nThe specialist selected a CAT file already uploaded in this conversation. "
+            "Use the attachment tools on that file and follow the latest request."
         )
     messages = [
         {
@@ -326,7 +336,7 @@ async def _run(
 ):
     context = current_request_context(request)
     container = request.app.state.container
-    continuing_runs = _continuing_runs(prior, payload.replaces_run_id)
+    continuing_runs = _continuing_runs(prior, payload.replaces_run_id or payload.cat_source_run_id)
     input_text = "\n\n".join([
         *(item["text"] for item in prior
           if item["type"] == "user" and item["run_id"] in continuing_runs
@@ -363,6 +373,10 @@ async def _run(
         name: tool for name, tool in TOOLS.items()
         if actor.role in tool.roles
         and (name != "inspect_attached_table" or payload.table_summary is not None)
+        and (
+            name not in {"inspect_cat_attachment", "prepare_cat_draft"}
+            or payload.cat_attachment_ref is not None
+        )
         and (name != "open_roster_import" or payload.attachment != "staff_roster")
         and (name != "open_staff_roster_import" or payload.attachment != "student_roster")
     }
@@ -558,13 +572,26 @@ async def _run(
     yield {"type": "end", "status": "step_limit"}
 
 
+def _public_event(event: dict, available_attachments: set[str]) -> dict:
+    if event["type"] != "start" or "_cat_attachment_ref" not in event:
+        return event
+    result = dict(event)
+    ref = result.pop("_cat_attachment_ref")
+    result["cat_attachment_state"] = "available" if ref in available_attachments else "expired"
+    return result
+
+
 @router.get("")
 async def conversation(
     request: Request, actor: CurrentActor, since: str | None = Query(default=None, max_length=80)
 ):
     history = _history(request, actor)
-    events, active_run, revision = history.read(_owner(actor), since)
+    owner = _owner(actor)
+    events, active_run, revision = history.read(owner, since)
+    attachments = set()
     if events is not None and actor.role == SPECIALIST:
+        if any("_cat_attachment_ref" in event for event in events):
+            attachments = history.cat.available_attachments(owner)
         current, _ = cat_workflow.drafts(request, actor)
         drafts = {draft["draft_ref"]: draft for draft in current["drafts"]}
         for event in events:
@@ -590,7 +617,10 @@ async def conversation(
         {
             "data": {
                 "events": (
-                    [event for event in events if event["type"] != "model_context"]
+                    [
+                        _public_event(event, attachments)
+                        for event in events if event["type"] != "model_context"
+                    ]
                     if events is not None else None
                 ),
                 "active": active_run is not None,
@@ -815,27 +845,54 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
         actor.role not in {STUDENT, TEACHER} or payload.attachment
     ):
         raise error(ErrorCode.FORBIDDEN, detail="table summary is unavailable for this workspace")
+    cat_upload = payload.attachment == "cat_bank"
+    has_cat_ref = payload.cat_attachment_ref is not None
+    if (cat_upload or has_cat_ref or payload.cat_source_run_id) and actor.role != SPECIALIST:
+        raise error(ErrorCode.FORBIDDEN, detail="CAT attachment is unavailable for this workspace")
+    if cat_upload != has_cat_ref or (
+        payload.cat_source_run_id and (cat_upload or payload.replaces_run_id)
+    ):
+        raise error(ErrorCode.VALIDATION_FAILED, detail="select one CAT attachment")
     container = request.app.state.container
     container.rate_limiter.check("support", actor.user_id)
     owner = _owner(actor)
     replaces = payload.replaces_run_id
-    if replaces is not None:
+    anchor = replaces or payload.cat_source_run_id
+    previous = []
+    active = None
+    events = None
+    if anchor is not None:
         events, active, _revision = history.read(owner)
-        previous = [item for item in events or [] if item["run_id"] == replaces]
+        previous = [item for item in events or [] if item["run_id"] == anchor]
+    previous_start = next((item for item in previous if item["type"] == "start"), {})
+    cat_ref = payload.cat_attachment_ref
+    if cat_ref is None and actor.role == SPECIALIST:
+        cat_ref = previous_start.get("_cat_attachment_ref")
+    if payload.cat_source_run_id and cat_ref is None:
+        raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="CAT attachment missing or expired")
+    if cat_ref is not None:
+        if cat_ref not in history.cat.available_attachments(owner):
+            raise error(ErrorCode.RESOURCE_NOT_FOUND, detail="CAT attachment missing or expired")
+        payload = payload.model_copy(
+            update={"attachment": "cat_bank", "cat_attachment_ref": cat_ref}
+        )
+
+    if replaces is not None:
         if (
             not events
             or (active or events[-1]["run_id"]) != replaces
             or not any(
                 item["type"] == "user"
-                or (item["type"] == "start" and item.get("replaces_run_id"))
+                or (
+                    item["type"] == "start"
+                    and (item.get("replaces_run_id") or item.get("_cat_attachment_ref"))
+                )
                 for item in previous
             )
         ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace run changed")
-        if not (payload.attachment or payload.table_summary) and any(
-            item["type"] == "start"
-            and item.get("requires_attachment")
-            for item in previous
+        if not (payload.attachment or payload.table_summary) and previous_start.get(
+            "requires_attachment"
         ):
             raise error(ErrorCode.WORKFLOW_CONFLICT, detail="select the task attachment again")
         if active:
@@ -850,6 +907,8 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
         "trace_id": context.trace_id,
         "requires_attachment": payload.attachment is not None or payload.table_summary is not None,
         **({"replaces_run_id": replaces} if replaces is not None else {}),
+        **({"cat_source_run_id": payload.cat_source_run_id} if payload.cat_source_run_id else {}),
+        **({"_cat_attachment_ref": cat_ref} if cat_ref else {}),
     }
     run_id, prior = history.acquire(owner, replaces=replaces, start=start)
     key = (owner, run_id)
@@ -901,7 +960,7 @@ async def turn(request: Request, payload: TurnRequest, actor: CsrfActor):
         while (line := await delivery.get()) is not None:
             yield line
 
-    deliver(start)
+    deliver(_public_event(start, {cat_ref} if cat_ref else set()))
     task = asyncio.create_task(execute())
     history.running[key] = task
     task.add_done_callback(released)

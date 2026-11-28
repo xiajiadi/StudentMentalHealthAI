@@ -209,7 +209,7 @@ async def upload(request: Request, actor: Actor) -> str:
     return _store(request).upload(workspace_owner(actor), document)
 
 
-async def inspect(request: Request, actor: Actor, attachment_ref: str | None):
+async def inspect(request: Request, actor: Actor, attachment_ref: str):
     _specialist(actor)
     _, document = _store(request).attachment(workspace_owner(actor), attachment_ref)
     validated = await _assets(request).validate_documents(
@@ -246,7 +246,7 @@ def _draft_view(ref: str, state: str, data: dict) -> dict:
 
 
 async def prepare(
-    request: Request, actor: Actor, proposal: CatDraftProposal, attachment_ref: str | None
+    request: Request, actor: Actor, proposal: CatDraftProposal, attachment_ref: str
 ):
     _specialist(actor)
     owner = workspace_owner(actor)
