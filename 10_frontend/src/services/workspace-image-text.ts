@@ -5,7 +5,7 @@ import {
   detectWorkspaceBarChart, readWorkspaceBarChart, readWorkspaceLineChart, workspaceChartRaster,
 } from './workspace-image-chart'
 
-export type WorkspaceChartPreview = { kind: 'bar' | 'line'; text: string }
+export type WorkspaceChartPreview = { kind: 'bar' | 'stacked-bar' | 'line'; text: string }
 
 function readWords(page: Page) {
   return page.blocks?.flatMap((block) => block.paragraphs.flatMap((paragraph) =>
@@ -70,7 +70,7 @@ export async function readWorkspaceImage(file: File, signal: AbortSignal): Promi
       const axis = await Promise.race([worker.recognize(file, { rectangle }, { blocks: true }), interruption])
       barValues = readWorkspaceBarChart(barChart, words, readWords(axis.data))
     }
-    if (barValues) return { text: content, chart: { kind: 'bar', text: barValues } }
+    if (barChart && barValues) return { text: content, chart: { kind: barChart.kind, text: barValues } }
     const lineValues = readWorkspaceLineChart(raster, words)
     return { text: content, chart: lineValues ? { kind: 'line', text: lineValues } : undefined }
   } finally {

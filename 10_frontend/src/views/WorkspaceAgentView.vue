@@ -18,6 +18,12 @@ import { WORKBOOK_INVALID, type LocalWorkspaceSheet, type WorkspaceTableSummary 
 import { identifyRosterFile, type RosterAttachment } from '@/services/school-roster-file'
 import type { WorkspaceChartPreview } from '@/services/workspace-image-text'
 
+const chartPreviewLabels: Record<WorkspaceChartPreview['kind'], string> = {
+  bar: '使用柱状图读数',
+  'stacked-bar': '使用堆叠柱状图读数',
+  line: '使用折线图读数',
+}
+
 type WorkspaceRole = 'student' | 'teacher' | 'psychological_specialist' | 'school_admin'
 type Entry = { label: string; to: string; icon: Component; note?: string }
 type Workspace = {
@@ -749,7 +755,7 @@ function dateLabel(value: string) {
       <div class="workspace-agent__confirm">
         <AppButton variant="secondary" @click="closeAttachment">关闭</AppButton>
         <AppButton v-if="attachment?.chart && attachment.content !== attachment.chart.text" variant="secondary" :disabled="Boolean(attachmentReading)" @click="attachment.content = attachment.chart.text">
-          {{ attachment.chart.kind === 'line' ? '使用折线图读数' : '使用柱状图读数' }}
+          {{ chartPreviewLabels[attachment.chart.kind] }}
         </AppButton>
         <AppButton v-if="attachment?.image" variant="secondary" :loading="attachmentReading === 'formula'" @click="readFormula">交给学校服务识别公式</AppButton>
         <AppButton v-if="attachment?.document && role === 'psychological_specialist'" variant="secondary" @click="reviewDocumentForLibrary">核对并入库</AppButton>

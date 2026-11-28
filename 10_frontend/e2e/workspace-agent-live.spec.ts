@@ -855,6 +855,93 @@ test('a learner reads line charts locally and compares their series with the age
   expect(writes).toEqual([])
 })
 
+test('a learner previews stacked bar segments and sends only the reviewed estimates', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  await chooseRole(page, 'STUDENT', '/student/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const writes: string[] = []
+  page.context().on('request', (request) => {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) writes.push(new URL(request.url()).pathname)
+  })
+  const upload = async (ambiguous: boolean) => {
+    const image = await page.evaluate((reverse) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 860
+      canvas.height = 560
+      const context = canvas.getContext('2d')!
+      context.fillStyle = 'white'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.font = '28px Arial'
+      context.textBaseline = 'middle'
+      const baseline = 460
+      const colors = ['#225bd0', '#e47726']
+      for (const [index, label] of ['Practice', 'Review'].entries()) {
+        const left = 200 + index * 260
+        context.fillStyle = colors[index]
+        context.fillRect(left, 18, 22, 18)
+        context.textAlign = 'left'
+        context.fillStyle = '#171c25'
+        context.fillText(label, left + 34, 27)
+      }
+      for (const tick of [0, 20, 40, 60, 80, 100]) {
+        const y = baseline - tick * 4
+        context.strokeStyle = '#e7e9ef'
+        context.beginPath()
+        context.moveTo(120, y)
+        context.lineTo(800, y)
+        context.stroke()
+        context.fillStyle = '#171c25'
+        context.textAlign = 'right'
+        context.fillText(String(tick), 95, y)
+      }
+      const values = [[20, 25], [35, 40], [45, 20]]
+      for (const [index, label] of ['Alpha', 'Beta', 'Gamma'].entries()) {
+        const left = 168 + index * 213
+        let bottom = baseline
+        for (const [segment, value] of values[index].entries()) {
+          const height = value * 4
+          context.fillStyle = colors[reverse && index === 1 ? 1 - segment : segment]
+          context.fillRect(left, bottom - height, 106, height)
+          bottom -= height
+        }
+        context.fillStyle = '#171c25'
+        context.textAlign = 'center'
+        context.fillText(label, left + 53, 494)
+      }
+      return canvas.toDataURL('image/png').split(',')[1]
+    }, ambiguous)
+    await page.locator('#workspace-agent-composer input[type="file"]').setInputFiles({
+      name: 'synthetic-stacked-chart.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64'),
+    })
+  }
+
+  const preview = page.getByRole('dialog', { name: '图片文字预览' })
+  const useChart = preview.getByRole('button', { name: '使用堆叠柱状图读数' })
+  await upload(true)
+  await expect(preview).toBeVisible({ timeout: 60_000 })
+  await expect(preview.getByRole('button', { name: /图读数/ })).toHaveCount(0)
+  await preview.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await upload(false)
+  await expect(useChart).toBeVisible({ timeout: 60_000 })
+  await useChart.click()
+  const editor = preview.getByRole('textbox', { name: '识别出的文字' })
+  await expect(editor).toHaveValue(/蓝色段 · Practice[\s\S]*橙色段 · Review[\s\S]*第 2 根（Beta）合计约 75，蓝色段约 35，橙色段约 40/)
+  await preview.getByRole('button', { name: '插入到输入框' }).click()
+  expect(writes).toEqual([])
+
+  const text = await page.locator('#workspace-agent-input').inputValue()
+  const prompt = `橙色部分哪一组最高，数值大约是多少？\n\n${text}`
+  const sent = page.waitForRequest((request) => request.url().endsWith('/workspace-agent/conversation/turn'))
+  const events = await ask(page, prompt, '发送消息')
+  expect((await sent).postDataJSON()).toEqual({ text: prompt, synthetic_only: true })
+  const answer = events.find((event) => event.type === 'answer')?.text
+  expect(answer).toMatch(/Beta/i)
+  expect(answer).toMatch(/\b40\b|四十/)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
 test('a learner previews a handwritten formula privately and asks the model to solve the reviewed text', async ({ page }) => {
   test.setTimeout(180_000)
   await page.addInitScript(() => {

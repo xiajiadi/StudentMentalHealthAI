@@ -6,7 +6,10 @@ export type ChartWord = {
   bbox: { x0: number; x1: number; y0: number; y1: number }
 }
 type Bar = { left: number; right: number; top: number; bottom: number }
-type BarChart = { bars: Bar[]; scale: number; axisWidth: number }
+type BarSegment = { top: number; bottom: number; hue: number }
+type BarChart = { bars: Bar[]; raster: ChartRaster; axisWidth: number } & (
+  { kind: 'bar' } | { kind: 'stacked-bar'; stacks: BarSegment[][] }
+)
 type ChartRaster = { data: Uint8ClampedArray; width: number; height: number; scale: number }
 
 function isColored(data: Uint8ClampedArray, offset: number) {
@@ -69,17 +72,36 @@ export function detectWorkspaceBarChart(raster: ChartRaster, words: ChartWord[])
   const numericWords = words.filter((word) => tickPattern.test(word.text.trim()))
   if (numericWords.length < 2) return
   const { data, width, height, scale } = raster
-  const bars = findBars(data, width, height)
+  const candidates = findBars(data, width, height)
+  if (!candidates.length) return
+  const baseline = Math.max(...candidates.map((bar) => bar.bottom))
+  const bars = candidates.filter((bar) => baseline - bar.bottom <= 4)
   if (bars.length < 2 || bars.length > 20) return
-  const baseline = bars[0].bottom
   const widths = bars.map(({ left, right }) => right - left + 1)
   if (Math.max(...widths) > Math.min(...widths) * 1.35
-    || bars.some((bar, index) => Math.abs(bar.bottom - baseline) > 4 || (index > 0 && bar.left <= bars[index - 1].right))) return
+    || bars.some((bar, index) => index > 0 && bar.left <= bars[index - 1].right)) return
   const plotLeft = Math.floor(bars[0].left / scale)
   const leftTicks = numericWords.filter(({ bbox }) => bbox.x1 < plotLeft)
   if (leftTicks.length < 2) return
   const farthestTick = Math.max(...leftTicks.map(({ bbox }) => bbox.x1))
-  return { bars, scale, axisWidth: Math.min(plotLeft, farthestTick + Math.round(12 / scale)) }
+  const plotTop = Math.min(...leftTicks.map(({ bbox }) => (bbox.y0 + bbox.y1) * scale / 2))
+  // Small legend swatches above the scale are not observations. An unrelated
+  // rectangle within the plotting region makes the interpretation ambiguous.
+  if (candidates.some((bar) => baseline - bar.bottom > 4 && (
+    bar.bottom >= plotTop - 4 || bar.right - bar.left + 1 > Math.min(...widths) / 2
+  ))) return
+  const axisWidth = Math.min(plotLeft, farthestTick + Math.round(12 / scale))
+  const stacks: BarSegment[][] = []
+  for (const bar of bars) {
+    const segments = barSegments(raster, bar)
+    if (!segments) return
+    stacks.push(segments)
+  }
+  const reference = stacks[0]
+  if (stacks.every((segments) => segments.length === 1)) return { kind: 'bar', bars, raster, axisWidth }
+  if (reference.length < 2 || stacks.some((segments) => segments.length !== reference.length
+    || segments.some((segment, index) => hueDistance(segment.hue, reference[index].hue) > 2))) return
+  return { kind: 'stacked-bar', bars, raster, axisWidth, stacks }
 }
 
 function locateWords(words: ChartWord[], scale: number) {
@@ -156,6 +178,27 @@ function pixelHue(data: Uint8ClampedArray, offset: number) {
 function hueDistance(a: number, b: number) {
   const difference = Math.abs(a - b)
   return Math.min(difference, hueBins - difference)
+}
+
+function barSegments({ data, width, height }: ChartRaster, bar: Bar): BarSegment[] | undefined {
+  const samples = [0.2, 0.35, 0.5, 0.65, 0.8].map((position) =>
+    Math.round(bar.left + (bar.right - bar.left) * position))
+  const segments: BarSegment[] = []
+  for (let y = bar.bottom; y >= bar.top; y -= 1) {
+    const row = samples.map((x) => pixelHue(data, (y * width + x) * 4)).filter((hue) => hue >= 0)
+    const hue = row.find((candidate) => row.filter((entry) => hueDistance(entry, candidate) <= 1).length >= 4)
+    if (hue === undefined) return
+    const current = segments.at(-1)
+    if (current && hueDistance(current.hue, hue) <= 2) {
+      current.top = y
+      continue
+    }
+    if (segments.length === 4 || segments.some((segment) => hueDistance(segment.hue, hue) < 5)) return
+    segments.push({ top: y, bottom: y, hue })
+  }
+  const minimumHeight = Math.max(6, height * 0.012)
+  if (segments.some((segment) => segment.bottom - segment.top + 1 < minimumHeight)) return
+  return segments
 }
 
 type Plot = { left: number; right: number; top: number; bottom: number }
@@ -253,7 +296,7 @@ const colorNames = [
   [250, '蓝'], [295, '紫'], [345, '粉'],
 ] as const
 
-function lineCaption(hue: number, raster: ChartRaster, words: LocatedWord[], top: number) {
+function chartCaption(hue: number, raster: ChartRaster, words: LocatedWord[], top: number) {
   const { data, width } = raster
   const color = colorNames.find(([upper]) => hue * 10 < upper)?.[1] ?? '红'
   const legendWords = words.filter((word) => word.y >= 6 && word.y < top - 6
@@ -285,6 +328,14 @@ function lineCaption(hue: number, raster: ChartRaster, words: LocatedWord[], top
   return { color, name: name.join(' ') }
 }
 
+function hasRightAxis(words: LocatedWord[], right: number, top: number, bottom: number) {
+  const ticks = words.filter((word) => word.left > right + 12 && word.y >= top
+    && word.y <= bottom && linearTickPattern.test(word.text))
+  return ticks.some((tick, index) => ticks.slice(index + 1).some((other) =>
+    Math.abs(tick.y - other.y) >= 10 && (Math.abs(tick.left - other.left) <= 10
+      || Math.abs(tick.right - other.right) <= 10)))
+}
+
 export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]): string | undefined {
   const { width, height, scale } = raster
   const positioned = locateWords(words, scale)
@@ -298,18 +349,14 @@ export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]):
 
   const top = Math.max(0, Math.floor(highest.y - 7))
   const bottom = Math.min(height - 1, Math.ceil(lowest.y + 7))
-  const rightTicks = positioned.filter((word) => word.left > right + 12 && word.y >= top
-    && word.y <= bottom && linearTickPattern.test(word.text))
-  if (rightTicks.some((tick, index) => rightTicks.slice(index + 1).some((other) =>
-    Math.abs(tick.y - other.y) >= 10 && (Math.abs(tick.left - other.left) <= 10
-      || Math.abs(tick.right - other.right) <= 10)))) return
+  if (hasRightAxis(positioned, right, top, bottom)) return
   const tracks = plotTracks(raster, { left, right, top, bottom })
   if (!tracks) return
 
   const precision = Math.max(0, Math.min(2, Math.ceil(-Math.log10(unitsPerPixel))))
   const format = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: precision })
   const output = ['折线图读数（按刻度和识别到的彩色线估算）']
-  const captions = tracks.map(({ hue }) => lineCaption(hue, raster, positioned, top))
+  const captions = tracks.map(({ hue }) => chartCaption(hue, raster, positioned, top))
   for (const [index, { hue, centers }] of tracks.entries()) {
     if (tracks.length > 1) {
       const { color, name } = captions[index]
@@ -330,7 +377,8 @@ export function readWorkspaceLineChart(raster: ChartRaster, words: ChartWord[]):
 }
 
 export function readWorkspaceBarChart(chart: BarChart, words: ChartWord[], axisWords = words): string | undefined {
-  const { bars, scale } = chart
+  const { bars, raster } = chart
+  const { scale } = raster
   const baseline = bars[0].bottom
   const labels = locateWords(words, scale)
   const ticks = locateWords(axisWords, scale).filter((word) => word.right < bars[0].left && tickPattern.test(word.text))
@@ -347,16 +395,35 @@ export function readWorkspaceBarChart(chart: BarChart, words: ChartWord[], axisW
   const unitsPerPixel = highest.value / range
   if (axis.some((tick, index) => (index > 0 && tick.value >= axis[index - 1].value)
     || Math.abs(zero.y - tick.y - tick.value / unitsPerPixel) > 5)) return
+  if (hasRightAxis(labels, bars[bars.length - 1].right, highest.y - 7, baseline + 7)) return
 
   const precision = Math.max(0, Math.min(2, Math.ceil(-Math.log10(unitsPerPixel))))
   const format = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: precision })
+  const readHeight = (top: number, bottom: number) =>
+    format.format((bottom - top + 1) * unitsPerPixel) + (zero.percent ? '%' : '')
+  const captions = chart.kind === 'stacked-bar'
+    ? chart.stacks[0].map(({ hue }) => chartCaption(hue, raster, labels, highest.y))
+    : []
+  const colorReferences = captions.map(({ color }, index) => (
+    captions.some((caption, other) => other !== index && caption.color === color)
+      ? `${color}色段 ${index + 1}` : `${color}色段`
+  ))
+  const legend = captions.flatMap(({ name }, index) => (
+    name && captions.every((other, entry) => entry === index || other.name !== name)
+      ? [`${colorReferences[index]} · ${name}`] : []
+  ))
   const output = bars.map((bar, index) => {
     const center = (bar.left + bar.right) / 2
     const label = labels.filter((word) => Math.abs(word.x - center) <= (bar.right - bar.left + 1) / 2
       && word.y > baseline + 3 && word.y < baseline + Math.max(25, range * 0.16))
       .sort((a, b) => a.x - b.x).map((word) => word.text).join(' ')
-    const value = format.format((baseline - bar.top + 1) * unitsPerPixel)
-    return `第 ${index + 1} 根${label ? `（${label}）` : ''}约 ${value}${zero.percent ? '%' : ''}`
+    const reference = `第 ${index + 1} 根${label ? `（${label}）` : ''}`
+    if (chart.kind === 'bar') return `${reference}约 ${readHeight(bar.top, bar.bottom)}`
+    const segments = chart.stacks[index].map(({ top, bottom }, segment) =>
+      `${colorReferences[segment]}约 ${readHeight(top, bottom)}`)
+    return [`${reference}合计约 ${readHeight(bar.top, bar.bottom)}`, ...segments].join('，')
   })
-  return ['柱状图读数（按刻度和柱高估算）', ...output].join('\n')
+  const title = chart.kind === 'stacked-bar' ? '堆叠柱状图读数（各段按刻度和颜色边界估算）' : '柱状图读数（按刻度和柱高估算）'
+  const text = [title, ...legend, ...output].join('\n')
+  if (text.length <= 2_900) return text
 }
