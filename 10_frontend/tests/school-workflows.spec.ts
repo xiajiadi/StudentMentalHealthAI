@@ -5,6 +5,7 @@ import AdminSchoolOperations from '@/components/school/AdminSchoolOperations.vue
 import AdminSchoolDirectory from '@/components/school/AdminSchoolDirectory.vue'
 import StudentAssignedTasks from '@/components/school/StudentAssignedTasks.vue'
 import TeacherOverviewView from '@/views/teacher/TeacherOverviewView.vue'
+import { chooseAppSelect } from './helpers/app-select'
 
 const api = vi.hoisted(() => ({
   getSchoolAdminDirectory: vi.fn(),
@@ -115,7 +116,7 @@ beforeEach(() => {
     instrument_id: 'INSTRUMENT_SYNTHETIC', instrument_version: 'v1',
   }]))
   api.publishSchoolTask.mockResolvedValue(envelope({}))
-  api.listActivations.mockResolvedValue({ items: [], has_more: false, engineering_only: true, psychological_interpretation_allowed: false })
+  api.listActivations.mockReset().mockResolvedValue({ items: [], has_more: false, engineering_only: true, psychological_interpretation_allowed: false })
   api.listSchoolTaskEnrollments.mockResolvedValue(envelope([{ enrollment_ref: 'ENROLL_123456', status: 'ACTIVE' }]))
   api.revokeSchoolTaskEnrollment.mockResolvedValue(envelope({ enrollment_ref: 'ENROLL_123456', status: 'REVOKED' }))
   api.listStudentSchoolTasks.mockResolvedValue(envelope([task]))
@@ -232,12 +233,15 @@ describe('学校测评任务页面', () => {
   it('管理端能读取组织信息并完成班级人员分配与任务报名撤销', async () => {
     vi.stubGlobal('crypto', { randomUUID: () => 'synthetic-uuid-1234' })
     api.createSchoolClass.mockImplementation(async (classRef: string) => {
-      api.listSchoolClasses.mockResolvedValueOnce(envelope([
+      api.listSchoolClasses.mockResolvedValue(envelope([
         { class_ref: task.class_ref, status: 'ACTIVE', active_student_count: 1, active_teacher_count: 1 },
         { class_ref: classRef, status: 'ACTIVE', active_student_count: 0, active_teacher_count: 0 },
       ]))
       return envelope({ class_ref: classRef, status: 'ACTIVE' })
     })
+    api.listSchoolTasks.mockImplementation((classRef: string) => Promise.resolve(
+      envelope(classRef === task.class_ref ? [task] : []),
+    ))
     const wrapper = mount(AdminSchoolOperations)
     await flushPromises()
 
@@ -245,19 +249,23 @@ describe('学校测评任务页面', () => {
     await wrapper.get('.school-create-class').trigger('click')
     await flushPromises()
     expect(api.createSchoolClass).toHaveBeenCalledWith('CLASS_syntheticuuid1234')
-    await wrapper.get('#school-student-select').setValue('USER_student')
+    await chooseAppSelect(wrapper, '#school-student-select', '学生账号 tudent')
     await wrapper.get('#school-student-select + button').trigger('click')
     await flushPromises()
     expect(api.assignSchoolStudent).toHaveBeenCalledWith('CLASS_syntheticuuid1234', 'USER_student')
     expect(api.assignSchoolStudent.mock.contexts[0]).toBe(api)
 
-    await wrapper.findAll('.school-task__actions .app-button')[1].trigger('click')
+    await chooseAppSelect(wrapper, '#school-class-select', '班级 123456，学生 1，教师 1')
     await flushPromises()
+    await wrapper.findAll('.school-task__actions .app-button').find((button) => button.text() === '管理报名')!.trigger('click')
+    await flushPromises()
+    expect(api.listSchoolTaskEnrollments).toHaveBeenCalledWith(task.task_ref)
     expect(wrapper.text()).toContain('报名 123456')
     await wrapper.get('.school-task__enrollment .app-button').trigger('click')
     await flushPromises()
     expect(api.revokeSchoolTaskEnrollment).toHaveBeenCalledWith(task.task_ref, 'ENROLL_123456')
     expect(wrapper.text()).toContain('该报名已撤销')
+    wrapper.unmount()
   })
 
   it('fixture task publication keeps the existing three-argument request', async () => {
@@ -296,12 +304,11 @@ describe('学校测评任务页面', () => {
     await wrapper.get('#school-task-mode-saved').setValue(true)
     await flushPromises()
     expect(api.listActivations).toHaveBeenCalledWith({ skip: 0, limit: 30 })
-    await wrapper.get('.school-task-activation button').trigger('click')
+    await wrapper.findAll('.school-task-activation button').find((button) => button.text() === '读取更多版本')!.trigger('click')
     await flushPromises()
     expect(api.listActivations).toHaveBeenLastCalledWith({ skip: 1, limit: 30 })
-    expect(wrapper.text()).toContain('合成方案 v2，合成题库 v3')
     expect(wrapper.text()).not.toContain(eligibleActivation.activation_ref)
-    await wrapper.get('#school-task-activation').setValue(eligibleActivation.activation_ref)
+    await chooseAppSelect(wrapper, '#school-task-activation', '合成方案 v2，合成题库 v3')
     await wrapper.get('.school-task-step-actions button:last-child').trigger('click')
     await wrapper.get('#school-task-opens').setValue('2026-10-15T09:00')
     await wrapper.get('.school-task-step-actions button:last-child').trigger('click')

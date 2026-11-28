@@ -334,7 +334,7 @@ describe('specialist research programme candidates', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('请求下一批（最多 25 项）')
 
-    await wrapper.find('select[aria-label="每批生成任务数量"]').setValue('2')
+    await chooseAppSelect(wrapper, '[aria-label="每批生成任务数量"]', '2 项')
     await flushPromises()
     expect(wrapper.text()).not.toContain('回执包含 2 项任务记录')
     expect(wrapper.text()).toContain('请求首批（最多 2 项）')
@@ -600,3 +600,4 @@ describe('specialist research programme candidates', () => {
     wrapper.unmount()
   })
 })
+import { chooseAppSelect } from './helpers/app-select'

@@ -1277,9 +1277,26 @@ test('an administrator checks real system dependencies and pages through the sch
   await expect(page.getByText(/从第 2 条起/).last()).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 
+  const settingsRead = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/health')
+  await page.goto(origin + '/admin/settings')
+  const settings = await settingsRead
+  expect(settings.ok()).toBe(true)
+  const dependencies = (await settings.json()).data.dependencies
+  const directory = page.getByRole('region', { name: '依赖服务目录' })
+  await expect(directory.getByRole('button')).toHaveCount(Object.keys(dependencies).length)
+  const service = page.getByRole('region', { name: '服务详情' })
+  await expect(service.getByText('GET /api/v1/health', { exact: true })).toBeVisible()
+
+  await page.goto(origin + '/admin/accounts?directoryView=classes')
+  await expect(page).toHaveURL(origin + '/admin/users?directoryView=classes')
+  await expect(page.getByRole('heading', { name: '学校账号管理', exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '学校目录' })).toHaveAttribute('aria-selected', 'true')
+
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   await expect(page.getByRole('list', { name: '本校运营记录' })).toHaveCount(0)
   expect((await page.request.get(origin + '/api/v1/school/operations-audit')).status()).toBe(403)
+  await page.goto(origin + '/admin/accounts')
+  await expect(page).toHaveURL(origin + '/teacher/workspace')
 })
 
 test('a synthetic learner resumes and submits a real assessment inside the conversation', async ({ page }) => {

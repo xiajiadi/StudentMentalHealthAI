@@ -276,7 +276,7 @@ describe('specialist CAT asset editor', () => {
     await wrapper.get('.asset-simulation .asset-button--primary').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('本次汇总，100 个合成样本')
-    await wrapper.get('.asset-simulation__batch select').setValue('1000')
+    await chooseAppSelect(wrapper, '.asset-simulation__batch [role="combobox"]', '1000')
     expect(wrapper.text()).not.toContain('本次汇总，100 个合成样本')
     expect(api.simulateSavedPlanVersion).toHaveBeenCalledOnce()
     await wrapper.get('.asset-simulation .asset-button--primary').trigger('click')
@@ -434,3 +434,4 @@ describe('specialist CAT asset editor', () => {
     wrapper.unmount()
   })
 })
+import { chooseAppSelect } from './helpers/app-select'

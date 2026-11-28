@@ -79,27 +79,31 @@ describe('specialist research source catalog', () => {
     const { wrapper } = prepare()
     await flushPromises()
     expect(api.listResearchSourceCatalog).toHaveBeenCalledWith(expect.objectContaining({ limit: 20, offset: 0 }))
-    expect(wrapper.text()).toContain('固定来源包')
-    expect(wrapper.text()).toContain('AI_ENGINEERING，pending')
     expect(wrapper.text()).toContain('Public policy source')
-
-    await wrapper.get('.source-row').trigger('click')
-    await flushPromises()
     expect(api.getResearchSource).toHaveBeenCalledWith('SRC_POLICY', expect.objectContaining({ signal: expect.any(Object) }))
-    expect(wrapper.text()).toContain('权利范围说明')
+    expect(wrapper.get('.source-record__button').attributes('aria-pressed')).toBe('true')
+    const tab = (label: string) => wrapper.findAll('[role="tab"]').find((button) => button.text() === label)!
+    await tab('校验记录').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.text()).toContain('source-package-r3')
+    expect(wrapper.text()).toContain('AI_ENGINEERING')
+    expect(wrapper.text()).toContain('pending')
+    expect(wrapper.text()).toContain('均未授予')
+    await tab('权利与来源').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.text()).toContain('Attribution required')
     expect(wrapper.text()).not.toContain('source text')
-    expect(wrapper.get('.source-links a').attributes('target')).toBe('_blank')
-    expect(wrapper.get('.source-links a').attributes('rel')).toContain('noopener')
+    const canonical = wrapper.get('a[href="https://example.org/source"]')
+    expect(canonical.attributes('target')).toBe('_blank')
+    expect(canonical.attributes('rel')).toContain('noopener')
     wrapper.unmount()
   })
 
   it('clears the selected source when the active role context changes', async () => {
     const { wrapper, session } = prepare()
     await flushPromises()
-    await wrapper.get('.source-row').trigger('click')
-    await flushPromises()
+    await wrapper.findAll('[role="tab"]').find((button) => button.text() === '权利与来源')!.trigger('keydown', { key: 'Enter' })
     expect(wrapper.text()).toContain('Attribution required')
 
+    api.listResearchSourceCatalog.mockResolvedValueOnce({ data: { ...page, items: [], total: 0 } })
     session.signIn({
       userId: 'USER_SPECIALIST', role: 'psychological_specialist', subjectId: null,
       displayName: '合成心理老师', initials: 'S',
@@ -107,17 +111,22 @@ describe('specialist research source catalog', () => {
     })
     await flushPromises()
     expect(wrapper.text()).not.toContain('Attribution required')
+    expect(wrapper.text()).not.toContain(source.title)
+    expect(api.getResearchSource).toHaveBeenCalledTimes(1)
     expect(api.listResearchSourceCatalog).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
   it('shows an unavailable state instead of replacing a missing backend package with fake records', async () => {
-    api.listResearchSourceCatalog.mockRejectedValueOnce(new Error('hidden private detail'))
+    api.listResearchSourceCatalog.mockRejectedValueOnce(Object.assign(
+      new Error('hidden private detail'), { code: 'RESEARCH_SERVICE_UNAVAILABLE' },
+    ))
     const { wrapper } = prepare()
     await flushPromises()
-    expect(wrapper.text()).toContain('无法读取经过校验的来源目录')
+    expect(wrapper.text()).toContain('来源目录尚未提供')
     expect(wrapper.text()).not.toContain('hidden private detail')
-    expect(wrapper.find('.source-row').exists()).toBe(false)
+    expect(wrapper.find('.source-record__button').exists()).toBe(false)
+    expect(api.getResearchSource).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 })

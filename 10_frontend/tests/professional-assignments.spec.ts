@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chooseAppSelect } from './helpers/app-select'
 
 const transport = vi.hoisted(() => ({ requestProfessionalReview: vi.fn() }))
 vi.mock('@/services/real-api', () => ({
@@ -40,9 +41,9 @@ const tasks = [
   { task_ref: 'TASK_SYNTHETIC_2', opens_at: '2026-10-21T00:00:00Z', due_at: null },
 ] as never[]
 
-function prepare() {
+function prepare(assignments: typeof assignment[] = []) {
   assignmentApi.listSpecialists.mockResolvedValue([specialist])
-  assignmentApi.listAssignments.mockResolvedValue([])
+  assignmentApi.listAssignments.mockResolvedValue(assignments)
   assignmentApi.assign.mockResolvedValue(assignment)
   assignmentApi.revoke.mockResolvedValue({ ...assignment, status: 'REVOKED', revoked_at: '2026-10-12T03:00:00Z' })
   assignmentApi.newKey.mockReturnValue('stable-synthetic-assignment-key')
@@ -85,8 +86,7 @@ describe('professional assignment transport', () => {
 
 describe('administrator professional assignment controls', () => {
   it('uses task dates and order, neutral specialist labels, and hides technical references', async () => {
-    assignmentApi.listAssignments.mockResolvedValue([assignment])
-    const wrapper = prepare()
+    const wrapper = prepare([assignment])
     await flushPromises()
 
     expect(wrapper.text()).toContain('第 1 项')
@@ -102,7 +102,7 @@ describe('administrator professional assignment controls', () => {
   it('retries an uncertain mutation only on explicit action with the same arguments and key', async () => {
     const wrapper = prepare()
     await flushPromises()
-    await wrapper.get('#professional-assignment-specialist').setValue(specialist.user_id)
+    await chooseAppSelect(wrapper, '#professional-assignment-specialist', '专员 1')
     assignmentApi.assign.mockRejectedValueOnce(Object.assign(new Error('network unavailable'), { code: 'NETWORK_UNAVAILABLE', retryable: true }))
       .mockResolvedValueOnce(assignment)
     await wrapper.findAll('button').find((button) => button.text() === '分配')!.trigger('click')
@@ -121,7 +121,7 @@ describe('administrator professional assignment controls', () => {
   it('prevents a second write while one is pending', async () => {
     const wrapper = prepare()
     await flushPromises()
-    await wrapper.get('#professional-assignment-specialist').setValue(specialist.user_id)
+    await chooseAppSelect(wrapper, '#professional-assignment-specialist', '专员 1')
     let resolveWrite!: (value: typeof assignment) => void
     assignmentApi.assign.mockReturnValueOnce(new Promise((resolve) => { resolveWrite = resolve }))
     const action = wrapper.findAll('button').find((button) => button.text() === '分配')!
@@ -165,7 +165,7 @@ describe('administrator professional assignment controls', () => {
   ])('does not offer idempotent retry for definite %s failures', async (code, guidance) => {
     const wrapper = prepare()
     await flushPromises()
-    await wrapper.get('#professional-assignment-specialist').setValue(specialist.user_id)
+    await chooseAppSelect(wrapper, '#professional-assignment-specialist', '专员 1')
     assignmentApi.assign.mockRejectedValueOnce(Object.assign(new Error('request rejected'), { code, retryable: false }))
     await wrapper.findAll('button').find((button) => button.text() === '分配')!.trigger('click')
     await flushPromises()

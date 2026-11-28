@@ -82,4 +82,14 @@ describe('角色路由守卫', () => {
     await router.push('/reviewer/queue')
     expect(router.currentRoute.value.path).toBe('/admin/workspace')
   })
+
+  it('旧账号管理链接保留目录参数并走当前账号页的角色校验', async () => {
+    useSessionStore().signIn({ userId: 'USER_demo_admin', role: 'school_admin', subjectId: null, displayName: '合成管理员', initials: '管' })
+    await router.push('/admin/accounts?directoryView=classes')
+    expect(router.currentRoute.value.fullPath).toBe('/admin/users?directoryView=classes')
+    expect(router.currentRoute.value.params.section).toBe('users')
+    useSessionStore().signIn({ userId: 'USER_demo_teacher', role: 'teacher', subjectId: null, displayName: '合成教师', initials: '师' })
+    await router.push('/admin/accounts')
+    expect(router.currentRoute.value.path).toBe('/teacher/workspace')
+  })
 })

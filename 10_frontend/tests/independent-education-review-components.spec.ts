@@ -124,7 +124,7 @@ describe('independent education review components', () => {
     const shareButton = wrapper.findAll('button').find((button) => button.text().includes('分享给所选心理老师'))!
     expect(shareButton.attributes('disabled')).toBeDefined()
 
-    await wrapper.get('select').setValue('MEMROLE_synthetic_1')
+    await chooseAppSelect(wrapper, 'button[id^="education-reviewer-"]', '合成心理老师')
     await wrapper.get('input[type="checkbox"]').setValue(true)
     await flushPromises()
     expect(shareButton.attributes('disabled')).toBeUndefined()
@@ -192,7 +192,7 @@ describe('independent education review components', () => {
       props: { conversationId }, global: { plugins: [pinia] },
     })
     await flushPromises()
-    await wrapper.get('select').setValue('MEMROLE_synthetic_1')
+    await chooseAppSelect(wrapper, 'button[id^="education-reviewer-"]', '合成心理老师')
     await wrapper.get('input[type="checkbox"]').setValue(true)
     await wrapper.findAll('button').find((button) => button.text().includes('分享给所选心理老师'))!.trigger('click')
     expect(services.studentShare).toHaveBeenCalledOnce()
@@ -272,3 +272,4 @@ describe('independent education review components', () => {
     wrapper.unmount()
   })
 })
+import { chooseAppSelect } from './helpers/app-select'

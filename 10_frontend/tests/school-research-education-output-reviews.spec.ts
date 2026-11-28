@@ -7,6 +7,13 @@ import {
   type ResearchEducationOutputReviewSummary,
 } from '@/services/school-research-education-output-reviews'
 import { useSessionStore } from '@/stores/session'
+import { chooseAppSelect } from './helpers/app-select'
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-10-16T09:00:00Z'))
+})
+afterEach(() => vi.useRealTimers())
 
 const envelope = (data: unknown) => ({ request_id: 'REQ_synthetic', trace_id: 'TRACE_synthetic', data })
 const response = (data: unknown, status = 200) => ({
@@ -272,7 +279,7 @@ describe('SpecialistResearchEducationOutputReviews', () => {
     expect(wrapper.text()).toContain('不代表 Safety 允许，也不代表心理专业批准')
     expect(wrapper.text()).toContain('Synthetic educational summary.')
     expect(wrapper.text()).not.toContain('PUBLISH')
-    await wrapper.get('#output-review-target').setValue('CREATE_HELD_CANDIDATE')
+    await chooseAppSelect(wrapper, '#output-review-target', '转为待审候选（HELD）')
     const submit = wrapper.findAll('button').find((button) => button.text().includes('确认转为待审候选'))
     expect(submit?.attributes('disabled')).toBeDefined()
 
@@ -320,7 +327,7 @@ describe('SpecialistResearchEducationOutputReviews', () => {
     expect(listItems[1]?.textContent).toBe(content.suggestions[0]?.text)
     expect(paragraphs[1]?.textContent).toBe(content.disclaimer)
 
-    await wrapper.get('#output-review-target').setValue('REJECTED')
+    await chooseAppSelect(wrapper, '#output-review-target', '拒绝此输出复核')
     await wrapper.get('.output-reviews__confirm input').setValue(true)
     const reject = wrapper.findAll('button').find((button) => button.text().includes('确认拒绝'))
     expect(reject?.attributes('disabled')).toBeUndefined()
@@ -363,7 +370,7 @@ describe('SpecialistResearchEducationOutputReviews', () => {
     await flushPromises()
     await wrapper.get('.output-reviews__row').trigger('click')
     await flushPromises()
-    await wrapper.get('#output-review-target').setValue('REJECTED')
+    await chooseAppSelect(wrapper, '#output-review-target', '拒绝此输出复核')
     await wrapper.get('.output-reviews__confirm input').setValue(true)
     fetchMock
       .mockResolvedValueOnce(response(envelope({ csrf_token: 'csrf-synthetic' })))

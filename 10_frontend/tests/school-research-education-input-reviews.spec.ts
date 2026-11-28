@@ -9,6 +9,7 @@ import {
 } from '@/services/school-research-education-input-reviews'
 import { schoolResearchEducationCandidates } from '@/services/school-research-education-candidates'
 import { useSessionStore } from '@/stores/session'
+import { chooseAppSelect, openAppSelect } from './helpers/app-select'
 
 const envelope = (data: unknown) => ({ request_id: 'REQ_synthetic', trace_id: 'TRACE_synthetic', data })
 const response = (data: unknown, status = 200) => ({
@@ -223,7 +224,6 @@ describe('SpecialistResearchEducationInputReviews continuation affordance', () =
   it('shows one-time authorization only when the trusted capability is enabled and pending', async () => {
     await openDetail(true)
     expect(wrapper?.text()).toContain('授权只允许一次研究生成')
-    expect(wrapper?.find('option[value="CONTINUATION_AUTHORIZED"]').exists()).toBe(true)
     expect(wrapper?.text()).toContain('不代表专业批准')
 
     fetchMock
@@ -234,7 +234,7 @@ describe('SpecialistResearchEducationInputReviews continuation affordance', () =
         continuation_enabled: true,
         updated_at: '2026-10-15T08:01:00Z',
       }))))
-    await wrapper?.get('select#input-review-disposition').setValue('CONTINUATION_AUTHORIZED')
+    await chooseAppSelect(wrapper!, '#input-review-disposition', '授权一次继续')
     await wrapper?.get('input[type="checkbox"]').setValue(true)
     const authorize = wrapper?.findAll('button')
       .find((button) => button.text().includes('确认授权一次继续'))
@@ -252,13 +252,16 @@ describe('SpecialistResearchEducationInputReviews continuation affordance', () =
 
   it('does not show authorization when disabled or after the grant was consumed into a new state', async () => {
     await openDetail(false)
-    expect(wrapper?.find('option[value="CONTINUATION_AUTHORIZED"]').exists()).toBe(false)
+    const pending = await openAppSelect(wrapper!, '#input-review-disposition')
+    expect(pending.text()).toContain('拒绝此输入复核请求')
+    expect(pending.text()).not.toContain('授权一次继续')
     expect(wrapper?.text()).not.toContain('授权只允许一次研究生成')
     wrapper?.unmount()
     wrapper = undefined
 
     await openDetail(true, 'CONTINUATION_AUTHORIZED', 2)
-    expect(wrapper?.find('option[value="CONTINUATION_AUTHORIZED"]').exists()).toBe(false)
-    expect(wrapper?.find('option[value="REVOKED"]').exists()).toBe(true)
+    const authorized = await openAppSelect(wrapper!, '#input-review-disposition')
+    expect(authorized.text()).not.toContain('授权一次继续')
+    expect(authorized.text()).toContain('撤销未使用的继续授权')
   })
 })
