@@ -1884,6 +1884,34 @@ class MySqlBackendAdapter:
             ).all()
             return [{"enrollment_ref": f"ENROLL_{row[0]}", "status": row[1]} for row in rows]
 
+    def _school_teacher_class_scope(self, school_id: int, role_id: int, now: datetime):
+        m = self._db_models
+        return (
+            self._select(m.SchoolClass.class_ref, m.SchoolClass.display_name)
+            .join(m.SchoolClassTeacher, m.SchoolClassTeacher.class_id == m.SchoolClass.id)
+            .where(
+                m.SchoolClass.status == "ACTIVE",
+                m.SchoolClass.school_id == school_id,
+                m.SchoolClassTeacher.school_id == school_id,
+                m.SchoolClassTeacher.membership_role_id == role_id,
+                m.SchoolClassTeacher.status == "ACTIVE",
+                m.SchoolClassTeacher.revoked_at.is_(None),
+                m.SchoolClassTeacher.valid_from <= now,
+                (m.SchoolClassTeacher.valid_until.is_(None))
+                | (m.SchoolClassTeacher.valid_until >= now),
+            )
+        )
+
+    async def school_teacher_class_scope(self, actor: Any) -> list[dict[str, Any]]:
+        now = self._utc_now()
+        async with self._uow() as uow:
+            _account_id, role_id = await self._school_actor_role(uow, actor, "teacher", now)
+            statement = self._school_teacher_class_scope(
+                actor.school_id, role_id, now
+            ).distinct().order_by(self._db_models.SchoolClass.class_ref)
+            rows = (await uow.session.execute(statement)).all()
+            return [{"class_ref": ref, "display_name": label} for ref, label in rows]
+
     async def school_teacher_progress(
         self, actor: Any, class_ref: str | None = None
     ) -> list[dict[str, Any]]:
@@ -1891,21 +1919,7 @@ class MySqlBackendAdapter:
         now = self._utc_now()
         async with self._uow() as uow:
             _account_id, role_id = await self._school_actor_role(uow, actor, "teacher", now)
-            classes_statement = (
-                self._select(m.SchoolClass.class_ref)
-                .join(m.SchoolClassTeacher, m.SchoolClassTeacher.class_id == m.SchoolClass.id)
-                .where(
-                    m.SchoolClass.status == "ACTIVE",
-                    m.SchoolClass.school_id == actor.school_id,
-                    m.SchoolClassTeacher.school_id == actor.school_id,
-                    m.SchoolClassTeacher.membership_role_id == role_id,
-                    m.SchoolClassTeacher.status == "ACTIVE",
-                    m.SchoolClassTeacher.revoked_at.is_(None),
-                    m.SchoolClassTeacher.valid_from <= now,
-                    (m.SchoolClassTeacher.valid_until.is_(None))
-                    | (m.SchoolClassTeacher.valid_until >= now),
-                )
-            )
+            classes_statement = self._school_teacher_class_scope(actor.school_id, role_id, now)
             if class_ref is not None:
                 classes_statement = classes_statement.where(m.SchoolClass.class_ref == class_ref)
             class_refs = sorted(set((await uow.session.scalars(classes_statement)).all()))
@@ -1916,28 +1930,35 @@ class MySqlBackendAdapter:
             from dataclasses import asdict
 
             tasks = (await uow.session.execute(
-                self._select(m.MeasurementTask, m.SchoolClass.class_ref)
+                self._select(
+                    m.MeasurementTask, m.SchoolClass.class_ref, m.SchoolClass.display_name
+                )
                 .join(m.SchoolClass, m.SchoolClass.id == m.MeasurementTask.class_id)
                 .where(
                     m.MeasurementTask.school_id == actor.school_id,
                     m.SchoolClass.school_id == actor.school_id,
                     m.SchoolClass.class_ref.in_(class_refs),
                 )
-                .order_by(m.SchoolClass.class_ref, m.MeasurementTask.published_at.desc(), m.MeasurementTask.task_ref)
+                .order_by(
+                    m.SchoolClass.class_ref,
+                    m.MeasurementTask.published_at.desc(),
+                    m.MeasurementTask.task_ref,
+                )
             )).all()
             counts = await uow.school_operations.task_progress_counts_many(
-                task_ids=[task.id for task, _ in tasks], school_id=actor.school_id
+                task_ids=[task.id for task, _, _ in tasks], school_id=actor.school_id
             )
             return [
                 {
                     "class_ref": current_class_ref,
+                    "class_display_name": class_label,
                     "task_ref": task.task_ref,
                     "task_status": task.status,
                     "opens_at": task.opens_at,
                     "due_at": task.due_at,
                     **asdict(counts[task.id]),
                 }
-                for task, current_class_ref in tasks
+                for task, current_class_ref, class_label in tasks
             ]
 
     async def school_grade_progress(

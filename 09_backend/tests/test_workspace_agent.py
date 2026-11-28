@@ -77,6 +77,9 @@ def tools(app, monkeypatch):
     )
     service = SimpleNamespace(
         teacher_progress=AsyncMock(return_value=[task]),
+        teacher_class_scope=AsyncMock(return_value=[
+            {"class_ref": "QA-class", "display_name": "合成班"},
+        ]),
         list_student_tasks=AsyncMock(return_value=[{**task, "status": "PUBLISHED"}]),
         list_class_tasks=AsyncMock(
             return_value=[
@@ -1635,6 +1638,130 @@ async def test_teacher_export_comes_from_scoped_database_counts(client, model_la
     assert view["artifact"]["filename"] == "class-assessment-progress.md"
     assert "任务完成率：40.0%" in view["artifact"]["markdown"]
     assert "must-not-leak" not in view["artifact"]["markdown"]
+
+
+async def test_teacher_selects_a_class_and_rechecks_the_same_filtered_report(
+    client, tools, model_lane,
+):
+    model, _ = model_lane
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    path = f"{BASE}/conversation/turn"
+    tools.teacher_class_scope.return_value = [
+        {"class_ref": "QA-class", "display_name": "高一（１）班"},
+        {"class_ref": "QA-other", "display_name": "高一（２）班"},
+    ]
+    row = {
+        **tools.teacher_progress.return_value[0],
+        "opens_at": datetime(2026, 11, 15, 16, tzinfo=UTC),
+        "due_at": datetime(2026, 11, 17, 0, tzinfo=UTC),
+    }
+    tools.teacher_progress.return_value = [
+        row,
+        {**row, "task_ref": "TASK_all_done", "completed_count": 5},
+        {**row, "task_ref": "TASK_starts_later", "opens_at": row["due_at"]},
+        {**row, "task_ref": "TASK_ended_earlier",
+         "opens_at": row["opens_at"] - timedelta(days=2),
+         "due_at": row["opens_at"] - timedelta(minutes=1)},
+    ]
+    parameters = {
+        "class_designation": "高一(1)班",
+        "active_from": "2026-11-16",
+        "active_through": "2026-11-16",
+        "pending_only": True,
+    }
+    selected_query = {}
+
+    async def model_step(messages, _definitions, _context):
+        if messages[-1]["role"] == "tool":
+            content = messages[-1]["content"]
+            assert "高一" not in content and "QA-class" not in content
+            data = json.loads(content)
+            assert data["tasks"] == 1
+            selected_query.update(data["query"])
+            return assistant_step(text="已核对该班级任务")
+        return assistant_step(tool="class_progress", arguments=json.dumps(parameters))
+
+    async def turn(text):
+        response = await client.post(
+            path, headers=headers, json={"text": text, "synthetic_only": True}
+        )
+        assert response.status_code == 200
+        events = [json.loads(line) for line in response.text.splitlines()]
+        assert events[-1]["status"] == "completed"
+        return next(event["view"] for event in events if event["type"] == "tool_result")
+
+    model.side_effect = model_step
+    view = await turn("只核对高一一班仍有未完成的测评")
+    assert view["filters"] == {
+        "class_label": "高一（１）班", "active_from": "2026-11-16",
+        "active_through": "2026-11-16", "pending_only": True,
+    }
+    assert [item["ref"] for item in view["rows"]] == ["TASK_workspace"]
+    assert selected_query["class_designation"].startswith("class-")
+
+    async def export(messages, _definitions, _context):
+        if messages[-1]["role"] == "tool":
+            assert json.loads(messages[-1]["content"])["completions"] == 3
+            return assistant_step(text="已重新查询并生成简报")
+        previous = next(
+            item["content"] for item in messages if "(class_progress)" in item["content"]
+        )
+        assert json.loads(previous.split(": ", 1)[1]) == {
+            "refresh_required": True, "previous_query": selected_query,
+        }
+        return assistant_step(
+            tool="make_class_progress_report", arguments=json.dumps(selected_query),
+        )
+
+    tools.teacher_progress.return_value[0] = {**row, "completed_count": 3}
+    model.side_effect = export
+    report = await turn("把刚才查到的任务做成可编辑简报")
+    text = report["artifact"]["markdown"]
+    assert "班级范围：高一（１）班" in text
+    assert "已提交人次：3" in text and "任务完成率：60.0%" in text
+    assert all(call.args[1] == "QA-class" for call in tools.teacher_progress.await_args_list)
+    assert tools.teacher_progress.await_count == 2
+
+
+@pytest.mark.parametrize(
+    ("designation", "reason"), [("同名班", "ambiguous"), ("别校班级", "unavailable")],
+)
+async def test_teacher_class_selection_never_defaults_to_all_after_an_unknown_scope(
+    client, tools, model_lane, designation, reason,
+):
+    model, _ = model_lane
+    headers = await login(client)
+    await select(client, headers, "TEACHER")
+    tools.teacher_class_scope.return_value = [
+        {"class_ref": f"QA-{suffix}", "display_name": "同名班"}
+        for suffix in ("a", "b")
+    ]
+    model.side_effect = [
+        assistant_step(
+            tool="make_class_progress_report",
+            arguments=json.dumps({"class_designation": designation}),
+        ),
+        assistant_step(tool="class_progress"),
+        assistant_step(text="请核对要查询的班级"),
+    ]
+    result = await client.post(
+        f"{BASE}/conversation/turn", headers=headers,
+        json={"text": "给指定班级做一份简报", "synthetic_only": True},
+    )
+    events = [json.loads(line) for line in result.text.splitlines()]
+    view = next(event["view"] for event in events if event["type"] == "tool_result")
+    assert view["kind"] == "teacher_progress_class_choice"
+    assert view["reason"] == reason
+    assert [row["ref"] for row in view["classes"]] == ["QA-a", "QA-b"]
+    assert "artifact" not in view
+    model_data, refused = [
+        json.loads(message["content"]) for message in model.await_args.args[0]
+        if message["role"] == "tool"
+    ]
+    assert model_data == {"class_selection_required": True, "available_choices": 2}
+    assert refused["error"] == "workflow_conflict"
+    tools.teacher_progress.assert_not_awaited()
 
 
 async def test_generated_document_revision_requires_a_fresh_scoped_read(client, model_lane):

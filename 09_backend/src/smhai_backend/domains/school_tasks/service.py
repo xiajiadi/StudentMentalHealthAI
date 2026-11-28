@@ -159,6 +159,10 @@ class SchoolTaskService:
         self._require(actor, BackendRole.TEACHER)
         return await self.persistence.school_teacher_progress(actor, class_ref)
 
+    async def teacher_class_scope(self, actor: Actor):
+        self._require(actor, BackendRole.TEACHER)
+        return await self.persistence.school_teacher_class_scope(actor)
+
     async def grade_progress(self, actor: Actor, class_ref: str | None = None):
         self._require(actor, BackendRole.GRADE_LEAD)
         return await self.persistence.school_grade_progress(actor, class_ref)

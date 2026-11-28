@@ -45,6 +45,7 @@ from .workspace_agent_tools import (
     DocumentSelection,
     Draft,
     ReferralDraft,
+    TaskWindow,
     execute_tool,
     preview_cat_handoff,
 )
@@ -82,6 +83,10 @@ names and link to the exact public URLs returned by the tool. Do not claim sourc
 the tool does not cover. Do not use it for unrelated learning, calculations or school reporting.
 For a class progress report, use make_class_progress_report. It reads current class totals
 and creates a verified download in one operation. Do not draft that report with save_markdown.
+Use the named class when the teacher specifies one. On a follow-up, keep the last verified
+class, date window and pending filter unless the user changes them. Pass the prior class
+alias for the same class. If the tool requires a class selection, let the teacher clarify
+using the class choices in the card. Do not broaden the query to other classes.
 For other documents, use save_markdown and return a short summary. The result cards provide
 editable Word (.docx) and Markdown downloads, including when Word is requested. If the user
 asks to change a generated document, read_workspace_document first using the reference,
@@ -135,6 +140,7 @@ _LOOKUP_REF_FIELDS = {
     "list_cat_drafts": ("drafts", "draft_ref"),
     "list_cat_handoffs": ("handoffs", "handoff_ref"),
 }
+_CLASS_PROGRESS_TOOLS = {"class_progress", "make_class_progress_report"}
 _RUN_ID = r"^[0-9a-f]{32}$"
 
 
@@ -295,7 +301,7 @@ def _context_messages(
                 data = {"refresh_required": True}
                 if tool == "list_published_feedback":
                     data["feedback_aliases"] = snapshot.get("newest_first", [])
-                elif tool == "read_school_audit":
+                elif tool in _CLASS_PROGRESS_TOOLS or tool == "read_school_audit":
                     data["previous_query"] = snapshot.get("query")
                 elif tool in _LOOKUP_REF_FIELDS:
                     collection, key = _LOOKUP_REF_FIELDS[tool]
@@ -369,6 +375,7 @@ async def _run(
     messages = _context_messages(actor, prior, payload, continuing_runs)
     documents = completed_workspace_documents(prior, continuing_runs)
     read_documents: set[str] = set()
+    unresolved_class_selection = False
     available = {
         name: tool for name, tool in TOOLS.items()
         if actor.role in tool.roles
@@ -434,6 +441,11 @@ async def _run(
                     if tool is None:
                         raise error(ErrorCode.FORBIDDEN, detail="tool is unavailable")
                     arguments = tool.args.model_validate_json(call.function.arguments, strict=True)
+                    if (
+                        unresolved_class_selection and isinstance(arguments, TaskWindow)
+                        and arguments.class_designation is None
+                    ):
+                        raise error(ErrorCode.WORKFLOW_CONFLICT, detail="select a class first")
                     yield {"type": "tool_started", "call_id": call.id, "label": tool.label}
                     if isinstance(arguments, Draft):
                         source_ref = arguments.revision_of
@@ -508,6 +520,8 @@ async def _run(
                             cat_attachment_ref=payload.cat_attachment_ref,
                             table_summary=payload.table_summary,
                         )
+                    if view["kind"] == "teacher_progress_class_choice":
+                        unresolved_class_selection = True
                     # Keep the rendered role-specific details local, including browser-only tokens.
                     yield {
                         "type": "tool_result",
@@ -516,10 +530,14 @@ async def _run(
                         "view": view,
                     }
                     # Recall requires an explicit read and screening on each turn.
+                    memory = (
+                        {"query": model_data["query"]}
+                        if name in _CLASS_PROGRESS_TOOLS and "query" in model_data else model_data
+                    )
                     if name != "read_workspace_document" and len(
-                        json.dumps(model_data, ensure_ascii=False)
+                        json.dumps(memory, ensure_ascii=False)
                     ) <= 2500:
-                        yield {"type": "model_context", "tool": name, "data": model_data}
+                        yield {"type": "model_context", "tool": name, "data": memory}
                 except (BackendError, ValidationError) as exc:
                     code = exc.code.value if isinstance(exc, BackendError) else "VALIDATION_FAILED"
                     model_data = {"error": code}
@@ -548,6 +566,13 @@ async def _run(
                         )
                     if name == "save_markdown" and code == ErrorCode.WORKFLOW_CONFLICT.value:
                         model_data["next_step"] = "Read the source document in this turn first."
+                    if name in _CLASS_PROGRESS_TOOLS:
+                        if code == ErrorCode.RESOURCE_NOT_FOUND.value:
+                            unresolved_class_selection = True
+                        if unresolved_class_selection:
+                            model_data["next_step"] = (
+                                "Ask for an exact authorized class. Do not broaden to all classes."
+                            )
                     yield {
                         "type": "tool_failed",
                         "call_id": call.id,

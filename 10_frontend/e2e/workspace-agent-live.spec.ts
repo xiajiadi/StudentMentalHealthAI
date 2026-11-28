@@ -1,4 +1,4 @@
-/* global HTMLImageElement, HTMLTextAreaElement */
+/* global Event, HTMLImageElement, HTMLInputElement, HTMLTextAreaElement */
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -22,8 +22,20 @@ async function signIn(page: Page) {
   await page.goto(origin + '/login')
   await page.getByRole('textbox', { name: '账号', exact: true }).fill(account!)
   await page.getByRole('textbox', { name: '密码', exact: true }).fill(password!)
-  const login = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login'))
+  const login = page.waitForResponse((response) => response.url().endsWith('/api/v1/auth/login'), {
+    timeout: 50_000,
+  })
   await page.getByRole('button', { name: '登录', exact: true }).click()
+  // Login has captured both values. Keep them out of snapshots during a slow response.
+  await page.evaluate(() => {
+    const credentials = document.querySelectorAll<HTMLInputElement>(
+      'input[autocomplete="username"], input[autocomplete="current-password"]',
+    )
+    for (const field of credentials) {
+      field.value = ''
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+  }).catch(() => undefined)
   expect((await login).ok()).toBe(true)
 }
 
@@ -118,6 +130,7 @@ test('the learner retrieves published education on demand and keeps arithmetic i
 })
 
 test('a legacy teacher student URL opens the aggregate class view without a personal record request', async ({ page }) => {
+  test.setTimeout(90_000)
   await signIn(page)
   await chooseRole(page, 'TEACHER', '/teacher/workspace')
   const calls: string[] = []
@@ -207,6 +220,66 @@ test('the teacher combines verified class counts and education material in a cla
   expect(wordActivity.relationships).toContain('https://www.who.int/')
   expect(sessionWrites).toEqual([])
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
+})
+
+test('a teacher exports the same named class and date scope after reopening chat', async ({ page }) => {
+  test.setTimeout(200_000)
+  await signIn(page)
+  await chooseRole(page, 'ADMIN', '/admin/workspace')
+  const classesResponse = await page.request.get(origin + '/api/v1/school/classes')
+  expect(classesResponse.ok()).toBe(true)
+  const classes = (await classesResponse.json()).data as { class_ref: string; display_name: string | null }[]
+  const labels = new Map(classes.filter((entry) => entry.display_name
+    && classes.filter((other) => other.display_name === entry.display_name).length === 1)
+    .map((entry) => [entry.class_ref, entry.display_name!]))
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  await page.setViewportSize({ width: 390, height: 840 })
+  const all = await page.request.get(origin + '/api/v1/school/teacher/task-progress')
+  expect(all.ok()).toBe(true)
+  type Task = {
+    class_ref: string; task_ref: string; opens_at: string; due_at: string | null
+    completed_count: number; active_enrollment_count: number
+  }
+  const tasks = (await all.json()).data as Task[]
+  const seed = tasks.find((task) => labels.has(task.class_ref)
+    && task.active_enrollment_count > task.completed_count)
+  expect(seed).toBeTruthy()
+  const label = labels.get(seed!.class_ref)!
+  const oneClass = await page.request.get(origin + '/api/v1/school/classes/' + encodeURIComponent(seed!.class_ref) + '/task-progress')
+  expect(oneClass.ok()).toBe(true)
+  const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', dateStyle: 'short' })
+  const day = (timestamp: string) => date.format(new Date(timestamp))
+  const targetDay = day(seed!.opens_at)
+  const chineseDate = targetDay.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1年$2月$3日')
+  const expected = ((await oneClass.json()).data as Task[]).filter((task) =>
+    day(task.opens_at) <= targetDay && (!task.due_at || day(task.due_at) >= targetDay)
+    && task.active_enrollment_count > task.completed_count)
+
+  const first = await ask(page,
+    `查一下合成班级「${label}」在${chineseDate}当天的测评任务进度。只列尚有未完成人次的任务`,
+    '发送任务',
+  )
+  const result = first.find((event) => event.view?.kind === 'class_progress')?.view
+  expect(result?.filters).toEqual({ class_label: label, active_from: targetDay, active_through: targetDay, pending_only: true })
+  expect(result?.total).toBe(expected.length)
+  expect(result?.rows.map((row: { ref: string }) => row.ref)).toEqual(expected.slice(0, 30).map((task) => task.task_ref))
+  await expect(page.getByText(/仍有未提交人次/).last()).toBeVisible()
+
+  await page.reload()
+  const next = await ask(page, '把刚才筛出来的任务做成可编辑 Word 简报，班级、日期和筛选条件都沿用刚才的查询', '发送任务')
+  const report = next.find((event) => event.view?.kind === 'class_progress' && event.view.artifact)?.view
+  expect(report?.filters).toEqual(result.filters)
+  expect(report?.total).toBe(expected.length)
+  const completions = expected.reduce((sum, task) => sum + task.completed_count, 0)
+  expect(report?.artifact?.markdown).toContain(`已提交人次：${completions}\n`)
+  const pending = page.waitForEvent('download')
+  await page.getByRole('button', { name: '下载班级统计 Word' }).last().click()
+  const download = await pending
+  const files = unzipSync(new Uint8Array(await readFile(await download.path())))
+  const body = strFromU8(files['word/document.xml'])
+  expect(body).toContain(label)
+  expect(body).toContain(targetDay)
+  expect(body).toContain(`已提交人次：${completions}`)
 })
 
 test('the teacher reopens and revises a generated Word document', async ({ page }) => {

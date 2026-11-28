@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Literal
+from unicodedata import normalize
 
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
@@ -48,8 +50,12 @@ class Arguments(BaseModel):
 
 
 class TaskWindow(Arguments):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    class_designation: str | None = Field(default=None, min_length=1, max_length=128)
     active_from: date | None = None
     active_through: date | None = None
+    pending_only: bool = False
     include_report: bool = False
 
 
@@ -182,6 +188,8 @@ TOOLS = {
         "查询授权班级进度",
         "Read task-level class completion counts. Optional dates select tasks whose open period "
         "overlaps those inclusive dates in China Standard Time. Counts are current totals. "
+        "Pass class_designation for a specified class label, class code or prior class alias. "
+        "Use pending_only when asked which tasks still have incomplete active enrollments. "
         "Set include_report=true if the teacher requests a downloadable factual progress summary.",
         (TEACHER,),
         TaskWindow,
@@ -190,7 +198,8 @@ TOOLS = {
         "生成班级统计简报",
         "Use this for a teacher asking for a class assignment progress report or export. "
         "Fetch current authorized task data and create a Word or Markdown report "
-        "with verified counts and the completion ratio. No prose or data arguments are needed.",
+        "with verified counts and the completion ratio. Use the same scope and date filters "
+        "as class_progress. No prose or count arguments are needed.",
         (TEACHER,),
         TaskWindow,
     ),
@@ -404,7 +413,7 @@ def _alias(prefix: str, ref: str) -> str:
     return prefix + "-" + hashlib.sha256(ref.encode()).hexdigest()[:12]
 
 
-def _date(value: datetime | None) -> str | None:
+def _date(value: date | None) -> str | None:
     return value.isoformat() if value else None
 
 
@@ -610,19 +619,71 @@ async def execute_tool(
         ):
             raise error(ErrorCode.VALIDATION_FAILED, detail="invalid date range")
         china = timezone(timedelta(hours=8))
+        service = container.school_tasks
+        scope = None
+        label = None
+        if arguments.class_designation is not None:
+            designation = normalize("NFKC", arguments.class_designation).casefold()
+            classes = await service.teacher_class_scope(actor)
+            matches = [
+                row for row in classes
+                if designation in {
+                    normalize("NFKC", row["class_ref"]).casefold(),
+                    _alias("class", row["class_ref"]),
+                }
+            ]
+            if not matches:
+                matches = [
+                    row for row in classes
+                    if designation == normalize(
+                        "NFKC", (row["display_name"] or "").strip()
+                    ).casefold()
+                ]
+            if len(matches) != 1:
+                choices = matches or classes
+                return (
+                    {
+                        "kind": "teacher_progress_class_choice",
+                        "reason": "ambiguous" if matches else "unavailable",
+                        "total": len(choices),
+                        "classes": [
+                            {
+                                "label": row["display_name"] or row["class_ref"],
+                                "ref": row["class_ref"],
+                            }
+                            for row in choices[:20]
+                        ],
+                    },
+                    {"class_selection_required": True, "available_choices": len(choices)},
+                )
+            scope = matches[0]["class_ref"]
+            label = matches[0]["display_name"] or scope
+        query = {
+            "class_designation": _alias("class", scope) if scope else None,
+            "active_from": _date(arguments.active_from),
+            "active_through": _date(arguments.active_through),
+            "pending_only": arguments.pending_only,
+        }
         rows = []
-        for source in await container.school_tasks.teacher_progress(actor):
+        sources = await service.teacher_progress(actor, scope)
+        for source in sources:
             item = TeacherTaskProgressDto.model_validate(source)
+            if scope and item.class_ref != scope:
+                raise error(ErrorCode.DEPENDENCY_INVALID_RESPONSE, detail="class scope differs")
             opened = item.opens_at.astimezone(china).date()
             due = item.due_at.astimezone(china).date() if item.due_at else None
             if arguments.active_from and due and due < arguments.active_from:
                 continue
             if arguments.active_through and opened > arguments.active_through:
                 continue
+            if arguments.pending_only and item.active_enrollment_count <= item.completed_count:
+                continue
             rows.append(
                 {
                     "ref": item.task_ref,
-                    "label": item.class_ref,
+                    "label": label or source.get("class_display_name") or item.class_ref,
+                    "class_ref": item.class_ref,
+                    "opens_at": _date(item.opens_at),
                     "due_at": _date(item.due_at),
                     "completed": item.completed_count,
                     "total": item.active_enrollment_count,
@@ -631,19 +692,40 @@ async def execute_tool(
             )
         completions = sum(row["completed"] for row in rows)
         enrollments = sum(row["total"] for row in rows)
-        view = {"kind": "class_progress", "rows": rows[:30], "total": len(rows)}
+        view = {
+            "kind": "class_progress",
+            "rows": rows[:30],
+            "total": len(rows),
+            "filters": {
+                "class_label": label,
+                "active_from": query["active_from"],
+                "active_through": query["active_through"],
+                "pending_only": arguments.pending_only,
+            },
+        }
         with_report = arguments.include_report or name == "make_class_progress_report"
         if with_report:
             ratio = f"{completions / enrollments:.1%}" if enrollments else "无可计算分母"
+            report_scope = (
+                re.sub(r"([\\`*_{}\[\]<>#~|])", r"\\\1", " ".join(label.split()))
+                if label else "全部授权班级"
+            )
+            start_date = query["active_from"] or "不限"
+            end_date = query["active_through"] or "不限"
+            status = "仍有未提交人次的任务" if arguments.pending_only else "全部匹配任务"
             view["artifact"] = {
                 "filename": "class-assessment-progress.md",
                 "markdown": (
                     "# 班级测评完成情况\n\n"
+                    f"- 班级范围：{report_scope}\n"
+                    f"- 查询区间：{start_date} 至 {end_date}（北京时间）\n"
+                    f"- 任务筛选：{status}\n"
                     f"- 授权任务数：{len(rows)}\n"
                     f"- 已提交人次：{completions}\n"
                     f"- 有效参测人次：{enrollments}\n"
                     f"- 任务完成率：{ratio}\n\n"
-                    "数据来自本次查询。同一名学生在不同任务中的参测分别计数。\n"
+                    "纳入开放时段与查询区间重叠的任务，数字为本次查询时的累计结果。"
+                    "同一名学生在不同任务中的参测分别计数。\n"
                 ),
             }
         return (
@@ -654,12 +736,13 @@ async def execute_tool(
                 "enrollments": enrollments,
                 "artifact_ready": with_report,
                 "download_formats": ["docx", "md"] if with_report else [],
+                "query": query,
                 "counts_by_class": dict(
-                    Counter(_alias("class", row["label"]) for row in rows[:30])
+                    Counter(_alias("class", row["class_ref"]) for row in rows).most_common(30)
                 ),
                 "rows": [
                     {
-                        "class": _alias("class", row["label"]),
+                        "class": _alias("class", row["class_ref"]),
                         "completed": row["completed"],
                         "total": row["total"],
                         "due_at": row["due_at"],

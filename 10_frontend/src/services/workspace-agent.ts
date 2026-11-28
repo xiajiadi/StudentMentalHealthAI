@@ -19,6 +19,7 @@ export interface WorkspaceAgentRow {
   label: string | null
   status: string | null
   due_at: string | null
+  opens_at?: string
   completed: number | null
   total: number | null
 }
@@ -67,7 +68,16 @@ export type CatDraft = {
   max_items: number
 }
 export type WorkspaceAgentView =
-  | { kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'; rows: WorkspaceAgentRow[]; total: number; class_count?: number; active?: number; artifact?: { filename: string; markdown: string } }
+  | {
+      kind: 'student_tasks' | 'class_progress' | 'review_tasks' | 'school_tasks' | 'school_student_counts'
+      rows: WorkspaceAgentRow[]
+      total: number
+      class_count?: number
+      active?: number
+      artifact?: { filename: string; markdown: string }
+      filters?: { class_label: string | null; active_from: string | null; active_through: string | null; pending_only: boolean }
+    }
+  | { kind: 'teacher_progress_class_choice'; reason: 'ambiguous' | 'unavailable'; total: number; classes: { ref: string; label: string }[] }
   | { kind: 'assessment_picker'; task_ref: string; due_at: string | null }
   | { kind: 'feedback_index'; total: number }
   | { kind: 'feedback_picker'; feedback_ref: string }

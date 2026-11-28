@@ -657,10 +657,20 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary, revisionRu
           <template v-else-if="'rows' in event.view">
             <strong>{{ headings[event.view.kind] }} · {{ event.view.total }}{{ event.view.kind === 'school_student_counts' ? ' 名学生' : ' 项' }}</strong>
             <small v-if="event.view.kind === 'school_student_counts'">{{ event.view.class_count }} 个班级 · {{ event.view.active }} 个在用账号</small>
+            <template v-if="event.view.kind === 'class_progress'">
+              <small v-if="event.view.filters">
+                {{ event.view.filters.class_label || '全部授权班级' }}
+                <template v-if="event.view.filters.active_from || event.view.filters.active_through"> · 开放时段 {{ event.view.filters.active_from || '不限' }} 至 {{ event.view.filters.active_through || '不限' }}（北京时间）</template>
+                <template v-if="event.view.filters.pending_only"> · 仍有未提交人次</template>
+              </small>
+              <small v-if="event.view.total > event.view.rows.length">显示其中 {{ event.view.rows.length }} 项</small>
+              <p v-if="!event.view.total">这个范围内没有匹配的测评任务</p>
+            </template>
             <ul v-if="event.view.rows.length" class="agent-thread__rows">
               <li v-for="(row, rowIndex) in event.view.rows" :key="row.ref">
                 <span>{{ row.label || `测评任务 ${rowIndex + 1}` }}</span>
-                <small v-if="row.due_at">{{ new Date(row.due_at).toLocaleString('zh-CN') }} 截止</small>
+                <small v-if="event.view.kind === 'class_progress' && row.opens_at">{{ new Date(row.opens_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) }} 开放</small>
+                <small v-if="row.due_at">{{ new Date(row.due_at).toLocaleString('zh-CN', event.view.kind === 'class_progress' ? { timeZone: 'Asia/Shanghai' } : undefined) }} 截止</small>
                 <template v-if="typeof row.completed === 'number' && typeof row.total === 'number'">
                   <small>已完成 {{ row.completed }} / {{ row.total }}</small>
                   <progress v-if="row.total > 0" :value="row.completed" :max="row.total" :aria-label="`${row.label || '班级'}完成比例`" />
@@ -674,6 +684,17 @@ defineExpose({ submit, cancel, openIndependentCat, openSchoolLibrary, revisionRu
               <AppButton variant="secondary" @click="download(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计简报</AppButton>
               <AppButton variant="secondary" :disabled="wordExporting" @click="downloadWord(event.view.artifact.filename, event.view.artifact.markdown)">下载班级统计 Word</AppButton>
             </div>
+          </template>
+          <template v-else-if="event.view.kind === 'teacher_progress_class_choice'">
+            <strong>{{ event.view.reason === 'ambiguous' ? '有多个同名班级' : '在授权范围内未找到该班级' }}</strong>
+            <p v-if="event.view.classes.length">请用完整班名或班级编号补充要查询的班级</p>
+            <p v-else>当前没有可查询的授权班级</p>
+            <small v-if="event.view.total > event.view.classes.length">显示 {{ event.view.classes.length }} 个班级</small>
+            <ul v-if="event.view.classes.length" class="agent-thread__rows" aria-label="可查询班级">
+              <li v-for="item in event.view.classes" :key="item.ref">
+                <span>{{ item.label }}</span><small v-if="item.ref !== item.label">{{ item.ref }}</small>
+              </li>
+            </ul>
           </template>
           <AppButton v-else-if="event.view.kind === 'assessment_picker'" variant="secondary" :disabled="assessmentChecking || assessmentStarting" @click="selectAssessment(event.view.task_ref)">阅读说明并打开测评</AppButton>
           <template v-else-if="event.view.kind === 'feedback_index'">
