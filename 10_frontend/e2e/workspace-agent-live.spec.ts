@@ -81,6 +81,31 @@ async function ask(page: Page, prompt: string, label: string, consentRequired = 
   return events.filter((event: { run_id: string }) => event.run_id === newestRun)
 }
 
+test('a stale browser tab cannot send a teacher task into the administrator conversation', async ({ page }) => {
+  test.setTimeout(180_000)
+  await signIn(page)
+  const historyUrl = origin + '/api/v1/workspace-agent/conversation'
+  const original = page.waitForResponse((response) => response.url() === historyUrl)
+  await chooseRole(page, 'TEACHER', '/teacher/workspace')
+  expect((await original).ok()).toBe(true)
+  const otherTab = await page.context().newPage()
+  await chooseRole(otherTab, 'ADMIN', '/admin/workspace')
+  const before = (await (await otherTab.request.get(historyUrl)).json()).data
+  expect(before.scope.role).toBe('ADMIN')
+  expect(before.active_run_id).toBeNull()
+
+  await page.locator('#workspace-agent-input').fill('请核对本班还有哪些测评没有完成')
+  const response = page.waitForResponse((item) => item.url().endsWith('/workspace-agent/conversation/turn'))
+  await page.getByRole('button', { name: '发送任务', exact: true }).click()
+  await page.getByRole('button', { name: '同意并发送' }).click()
+  const rejected = await response
+  expect(rejected.status()).toBe(409)
+  expect((await rejected.json()).detail).toBe('workspace context changed')
+  await expect(page.getByText('学校或角色已切换，请刷新工作区', { exact: true })).toBeVisible()
+  const after = (await (await otherTab.request.get(historyUrl)).json()).data
+  expect(after).toEqual(before)
+})
+
 test('four live workspace roles run together and one survives a browser reload', async ({ browser }) => {
   test.skip(process.env.PSYNOVA_AGENT_QA_CONCURRENT !== '1', 'Runs four live synthetic workspace sessions')
   test.setTimeout(320_000)

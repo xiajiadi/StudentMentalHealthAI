@@ -8,6 +8,7 @@ from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from urllib.parse import quote
 from zipfile import ZipFile
 
 import pytest
@@ -164,6 +165,57 @@ async def select(client, headers, role, school=FIRST):
         "/api/v1/auth/active-context", headers=headers, json={"role": role, "school_ref": school}
     )
     assert response.status_code == 200
+
+
+async def test_stale_browser_scope_cannot_operate_on_the_other_school(client, tools, model_lane):
+    model, _safety = model_lane
+    csrf = await login(client)
+    history_url = f"{BASE}/conversation"
+
+    async def scoped_headers():
+        session = (await client.get("/api/v1/auth/me")).json()["data"]
+        active = session["active_context"]
+        role = "school_admin" if active["role"] == "ADMIN" else active["role"].lower()
+        scope = json.dumps([session["user_id"], active["school_ref"], role], separators=(",", ":"))
+        return {**csrf, "X-PsyNova-Workspace-Scope": quote(scope, safe="")}
+
+    await select(client, csrf, "ADMIN", FIRST)
+    first = await scoped_headers()
+    assert (await client.get(history_url, headers=first)).status_code == 200
+    await select(client, csrf, "ADMIN", SECOND)
+    second = await scoped_headers()
+    model.return_value = assistant_step(text="本校合成资料")
+    payload = {"text": "请记录本校核对事项", "synthetic_only": True}
+    turn = await client.post(f"{history_url}/turn", headers=second, json=payload)
+    assert turn.status_code == 200
+    previous = (await client.get(history_url, headers=second)).json()["data"]
+    preview = await client.post(
+        f"{BASE}/run", headers=second, json={"text": "新建班级 B-SYNTHETIC"}
+    )
+    token = preview.json()["data"]["token"]
+    model.reset_mock()
+    for method, path, body in [
+        ("GET", history_url, None),
+        ("GET", f"{BASE}/snapshot", None),
+        ("POST", f"{history_url}/turn", payload),
+        ("POST", f"{history_url}/reset", None),
+        ("POST", f"{BASE}/confirm", {"token": token}),
+    ]:
+        stale = await client.request(method, path, headers=first, json=body)
+        assert stale.status_code == 409
+        assert stale.json()["detail"] == "workspace context changed"
+    assert (await client.get(history_url, headers=second)).json()["data"] == previous
+    model.assert_not_awaited()
+    tools.create_class.assert_not_called()
+
+    await select(client, csrf, "PSYCHOLOGICAL_SPECIALIST", FIRST)
+    original_specialist = await scoped_headers()
+    await select(client, csrf, "PSYCHOLOGICAL_SPECIALIST", SECOND)
+    stale_upload = await client.post(
+        f"{history_url}/cat-attachment", headers=original_specialist, json={"items": []}
+    )
+    assert stale_upload.status_code == 409
+    assert stale_upload.json()["detail"] == "workspace context changed"
 
 
 @pytest.mark.parametrize(

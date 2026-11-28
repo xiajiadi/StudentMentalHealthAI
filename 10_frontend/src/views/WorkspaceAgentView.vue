@@ -195,7 +195,7 @@ async function loadOverview() {
   overviewLoading.value = true
   overviewError.value = false
   try {
-    const data = await runWorkspaceAgent({ operation: 'snapshot' }, request.signal)
+    const data = await runWorkspaceAgent({ operation: 'snapshot' }, request.signal, workspaceScope.value)
     if (!request.signal.aborted) overview.value = data
   } catch {
     if (!request.signal.aborted) overviewError.value = true
@@ -302,7 +302,7 @@ async function run() {
   formError.value = ''
   result.value = null
   try {
-    const data = await runWorkspaceAgent({ operation: 'run', text }, request.signal)
+    const data = await runWorkspaceAgent({ operation: 'run', text }, request.signal, workspaceScope.value)
     if (!request.signal.aborted) {
       result.value = data
       if (isStudent && command.value.trim() === text) command.value = ''
@@ -341,6 +341,7 @@ function cancelAttachmentRead() {
 }
 
 async function openAttachment(file: File) {
+  const expectedScope = workspaceScope.value
   cancelAttachmentRead()
   attachment.value = undefined
   attachmentOpen.value = false
@@ -399,7 +400,7 @@ async function openAttachment(file: File) {
     } else if (kind === 'pdf' || kind === 'docx') {
       if (!file.size || file.size > 5 * 1024 * 1024) throw new Error('请选择不超过 5 MiB 的 PDF 或 DOCX')
       attachmentReading.value = 'document'
-      const result = await previewWorkspaceDocument(file, kind, request.signal)
+      const result = await previewWorkspaceDocument(file, kind, request.signal, expectedScope)
       content = result.text
       documentPreview = { file, characters: result.characters, previewLength: Array.from(content).length }
     } else {
@@ -437,6 +438,7 @@ function hasAttachmentControls(content: string) {
 
 async function readFormula() {
   const preview = attachment.value
+  const expectedScope = workspaceScope.value
   if (!preview?.image || attachmentInteractionBlocked.value) return
   const region = editingFormulaRegion.value ? { ...formulaRegion.value } : undefined
   if (region && !hasFormulaRegion(region)) return
@@ -448,7 +450,7 @@ async function readFormula() {
   try {
     const { encodeWorkspaceFormulaImage } = await import('@/services/workspace-image-text')
     const prepared = await encodeWorkspaceFormulaImage(preview.image, request.signal, region)
-    const text = await previewWorkspaceFormula(prepared, request.signal)
+    const text = await previewWorkspaceFormula(prepared, request.signal, expectedScope)
     if (!request.signal.aborted && attachment.value === preview) {
       if (region) regionFormula.value = text
       else preview.content = text
@@ -584,7 +586,9 @@ async function confirm() {
   confirming.value = true
   formError.value = ''
   try {
-    const data = await runWorkspaceAgent({ operation: 'confirm', token: result.value.token }, request.signal)
+    const data = await runWorkspaceAgent(
+      { operation: 'confirm', token: result.value.token }, request.signal, workspaceScope.value,
+    )
     if (!request.signal.aborted) {
       result.value = data
       confirmOpen.value = false

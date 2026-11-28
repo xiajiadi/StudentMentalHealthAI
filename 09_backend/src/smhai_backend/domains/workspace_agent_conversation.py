@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import structlog
 from database_layer.provenance import is_public_demo_school_ref
-from fastapi import APIRouter, Path, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -26,7 +26,7 @@ from smhai_backend.domains.school_research_sources import library
 from . import workspace_agent_cat as cat_workflow
 from . import workspace_agent_feedback_guide as feedback_guide
 from . import workspace_agent_formula as formula_reader
-from .workspace_agent import _check_actor, _ensure_run_preview
+from .workspace_agent import _check_actor, _ensure_run_preview, check_workspace_scope
 from .workspace_agent_documents import (
     WorkspaceDocument,
     completed_workspace_documents,
@@ -52,7 +52,10 @@ from .workspace_agent_tools import (
     preview_cat_handoff,
 )
 
-router = APIRouter(prefix="/workspace-agent/conversation", tags=["workspace-agent"])
+router = APIRouter(
+    prefix="/workspace-agent/conversation", tags=["workspace-agent"],
+    dependencies=[Depends(check_workspace_scope)],
+)
 log = structlog.get_logger(__name__)
 _CHINA = timezone(timedelta(hours=8))
 _DOCUMENT_PREVIEW_BYTES = 5 * 1024 * 1024

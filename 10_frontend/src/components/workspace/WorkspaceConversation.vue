@@ -183,19 +183,26 @@ function showProgress(event: WorkspaceEvent) {
   if (event.type === 'tool_started') progress.value = event.label
 }
 
-function historyFailure(cause: unknown, fallback: string) {
+function historyFailure(cause: unknown, fallback: string, scopeOnly = false) {
   if (disposed) return
   const code = cause instanceof RealApiError ? cause.code.toLowerCase() : ''
-  if (['auth_session_expired', 'auth_session_revoked', 'forbidden'].includes(code)) {
+  if (code === 'workspace_scope_changed'
+    || (!scopeOnly && ['auth_session_expired', 'auth_session_revoked', 'forbidden'].includes(code))) {
+    refreshSequence++
+    runRequest?.abort()
     scopeBlocked.value = true
     events.value = []
     selectedCatRun.value = undefined
+    uploadedCat = undefined
+    pendingClass.value = pendingPublication.value = pendingCat.value = undefined
     activeRun.value = undefined
     stopping.value = false
     lastText.value = lastSentRun.value = ''
     panel.value = undefined
     assessmentTask.value = assessmentId.value = ''
-    message.value = '工作区访问已变化，请重新登录或切换到当前角色'
+    message.value = code === 'workspace_scope_changed'
+      ? '学校或角色已切换，请刷新工作区'
+      : '工作区访问已变化，请重新登录或切换到当前角色'
     return
   }
   message.value = fallback
@@ -203,7 +210,9 @@ function historyFailure(cause: unknown, fallback: string) {
 
 async function refresh(incremental = false) {
   const sequence = ++refreshSequence
-  const previous = await loadWorkspaceConversation(historyRequest.signal, incremental ? historyVersion : undefined)
+  const previous = await loadWorkspaceConversation(
+    historyRequest.signal, incremental ? historyVersion : undefined, props.scope,
+  )
   if (disposed || sequence !== refreshSequence) return
   const { user_id, school_ref, role } = previous.scope
   if (JSON.stringify([user_id, school_ref, role === 'ADMIN' ? 'school_admin' : role.toLowerCase()]) !== props.scope) {
@@ -302,15 +311,17 @@ async function submit(text: string, replacesRunId?: string) {
       progress.value = '正在上传合成题库'
       try {
         if (uploadedCat?.file !== file) {
-          const submitted = await uploadWorkspaceCat(csv ? file.slice(0, file.size, 'text/csv') : file, request.signal)
+          const submitted = await uploadWorkspaceCat(
+            csv ? file.slice(0, file.size, 'text/csv') : file, request.signal, props.scope,
+          )
           uploadedCat = { file, ref: submitted.ref }
         }
         catRef = uploadedCat.ref
       } catch (cause) {
         if (!disposed && !request.signal.aborted) {
-          message.value = cause instanceof RealApiError && cause.message !== '工作区请求暂时不可用'
+          historyFailure(cause, cause instanceof RealApiError && cause.message !== '工作区请求暂时不可用'
             ? cause.message
-            : '题库上传失败，请检查合成 GRM JSON 或 UTF-8 CSV 的格式和大小（最多 240 KiB），也可稍后重试'
+            : '题库上传失败，请检查合成 GRM JSON 或 UTF-8 CSV 的格式和大小（最多 240 KiB），也可稍后重试', true)
         }
         return false
       }
@@ -336,11 +347,15 @@ async function submit(text: string, replacesRunId?: string) {
       if (event.type === 'tool_result' && event.view.kind === 'staff_roster_import') openPanel('staff')
       if (event.type === 'tool_result' && props.catFile && event.view.kind === 'workflow' && event.view.workflow === 'cat') panel.value = 'cat'
       void nextTick(() => { if (viewport.value) viewport.value.scrollTop = viewport.value.scrollHeight })
-    }, request.signal, catRef, props.tableSummary, replacesRunId, source?.run_id)
+    }, request.signal, props.scope, catRef, props.tableSummary, replacesRunId, source?.run_id)
     if (replacesRunId) await refresh().catch((cause) => historyFailure(cause, '暂时无法核对更新后的任务记录'))
     return true
   } catch (cause) {
     if (!disposed && runRequest === request) {
+      if (cause instanceof RealApiError && cause.code === 'WORKSPACE_SCOPE_CHANGED') {
+        historyFailure(cause, '')
+        return false
+      }
       const changed = replacesRunId && cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict'
       const catUnavailable = (file || source || (replacesRunId && taskStarts.value.get(replacesRunId)?.cat_attachment_state))
         && cause instanceof RealApiError && cause.code.toLowerCase() === 'resource_not_found'
@@ -371,14 +386,14 @@ async function reload() {
 
 async function reset() {
   try {
-    await resetWorkspaceConversation()
+    await resetWorkspaceConversation(props.scope)
     events.value = []
     selectedCatRun.value = undefined
     message.value = ''
     lastText.value = ''
     lastSentRun.value = ''
-  } catch {
-    message.value = '暂时无法清空会话，请稍后重试'
+  } catch (cause) {
+    historyFailure(cause, '暂时无法清空会话，请稍后重试', true)
   }
 }
 
@@ -474,7 +489,7 @@ async function confirmClass() {
   classBusy.value = true
   message.value = ''
   try {
-    const receipt = await runWorkspaceAgent({ operation: 'confirm', token: preview.token })
+    const receipt = await runWorkspaceAgent({ operation: 'confirm', token: preview.token }, undefined, props.scope)
     if (receipt.kind !== 'class_created') throw new Error()
     submittedClasses.value.add(preview.token)
     pendingClass.value = undefined
@@ -483,7 +498,7 @@ async function confirmClass() {
     if (cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict') {
       await refresh().catch((cause) => historyFailure(cause, '暂时无法核对当前预览'))
     }
-    if (!scopeBlocked.value) message.value = '无法确认班级已创建，请重新查询班级或生成新预览'
+    if (!scopeBlocked.value) historyFailure(cause, '无法确认班级已创建，请重新查询班级或生成新预览', true)
     pendingClass.value = undefined
   } finally {
     classBusy.value = false
@@ -501,7 +516,7 @@ async function publishTask() {
   publicationBusy.value = true
   message.value = ''
   try {
-    const receipt = await confirmWorkspacePublication(preview.token)
+    const receipt = await confirmWorkspacePublication(preview.token, props.scope)
     if (receipt.status !== 'PUBLISHED' || !receipt.task_ref) throw new Error()
     publishedTokens.value.add(preview.token)
     if (preview.catDraft) {
@@ -514,7 +529,7 @@ async function publishTask() {
     if (cause instanceof RealApiError && cause.code.toLowerCase() === 'workflow_conflict') {
       await refresh().catch((cause) => historyFailure(cause, '暂时无法核对当前预览'))
     }
-    if (!scopeBlocked.value) message.value = '暂时无法核实发布结果，请查询学校任务后重新生成预览'
+    if (!scopeBlocked.value) historyFailure(cause, '暂时无法核实发布结果，请查询学校任务后重新生成预览', true)
     pendingPublication.value = undefined
   } finally {
     publicationBusy.value = false
@@ -530,10 +545,10 @@ async function handleCat(draft: CatDraft, action: 'save' | 'approve' | 'publish'
   catBusy.value = true
   message.value = ''
   try {
-    const preview = await previewWorkspaceCatHandoff(draft.draft_ref, runId)
+    const preview = await previewWorkspaceCatHandoff(draft.draft_ref, runId, props.scope)
     pendingPublication.value = { ...preview, catDraft: draft, runId }
-  } catch {
-    message.value = '无法准备发布。请核对班级、截止时间和方案批准状态'
+  } catch (cause) {
+    historyFailure(cause, '无法准备发布。请核对班级、截止时间和方案批准状态', true)
   } finally {
     catBusy.value = false
   }
@@ -545,11 +560,11 @@ async function confirmCat() {
   catBusy.value = true
   message.value = ''
   try {
-    const receipt = await updateWorkspaceCat(pending.draft.draft_ref, pending.action)
+    const receipt = await updateWorkspaceCat(pending.draft.draft_ref, pending.action, props.scope)
     catReceipts.value.set(receipt.draft_ref, receipt)
     pendingCat.value = undefined
-  } catch {
-    message.value = '暂时无法确认操作结果。可重试或重新查询草案状态'
+  } catch (cause) {
+    historyFailure(cause, '暂时无法确认操作结果。可重试或重新查询草案状态', true)
   } finally {
     catBusy.value = false
   }
@@ -591,12 +606,12 @@ function downloadTable(summary: WorkspaceTableSummary) {
 
 async function requestStop(runId: string) {
   try {
-    await cancelWorkspaceTurn(runId, historyRequest.signal)
+    await cancelWorkspaceTurn(runId, historyRequest.signal, props.scope)
     if (!disposed && !sending.value) await refresh()
-  } catch {
+  } catch (cause) {
     if (!disposed) {
       stopping.value = false
-      message.value = '暂时无法确认任务是否停止，请稍后重试'
+      historyFailure(cause, '暂时无法确认任务是否停止，请稍后重试', true)
     }
   }
 }

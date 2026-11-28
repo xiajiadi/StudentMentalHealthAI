@@ -38,8 +38,9 @@ export interface WorkspaceAgentResult {
 export async function runWorkspaceAgent(
   request: { operation: 'snapshot' } | { operation: 'run'; text: string } | { operation: 'confirm'; token: string },
   signal?: AbortSignal,
+  expectedScope?: string,
 ) {
-  return (await realApiProvider.requestWorkspaceAgent<WorkspaceAgentResult>(request, signal)).data
+  return (await realApiProvider.requestWorkspaceAgent<WorkspaceAgentResult>(request, signal, expectedScope)).data
 }
 
 export type WorkflowPanel = 'review' | 'cat' | 'resources' | 'library' | 'support' | 'knowledge' | 'feedback' | 'publish' | 'system'
@@ -127,8 +128,10 @@ export type WorkspaceEvent = { run_id: string } & (
   | { type: 'end'; status: 'completed' | 'blocked' | 'failed' | 'interrupted' | 'step_limit'; code?: string }
 )
 
-export async function loadWorkspaceConversation(signal?: AbortSignal, version?: string) {
-  const response = await realApiProvider.requestWorkspaceConversation('history', undefined, signal, version)
+export async function loadWorkspaceConversation(signal: AbortSignal, version: string | undefined, expectedScope: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('history', undefined, signal, {
+    historyVersion: version, expectedScope,
+  })
   return (await response.json()).data as {
     events: WorkspaceEvent[] | null
     active_run_id: string | null
@@ -137,31 +140,31 @@ export async function loadWorkspaceConversation(signal?: AbortSignal, version?: 
   }
 }
 
-export async function cancelWorkspaceTurn(runId: string, signal: AbortSignal) {
-  await realApiProvider.requestWorkspaceConversation('cancel', { run_id: runId }, signal)
+export async function cancelWorkspaceTurn(runId: string, signal: AbortSignal, expectedScope: string) {
+  await realApiProvider.requestWorkspaceConversation('cancel', { run_id: runId }, signal, { expectedScope })
 }
 
-export async function resetWorkspaceConversation() {
-  await realApiProvider.requestWorkspaceConversation('reset')
+export async function resetWorkspaceConversation(expectedScope: string) {
+  await realApiProvider.requestWorkspaceConversation('reset', undefined, undefined, { expectedScope })
 }
 
-export async function confirmWorkspacePublication(token: string) {
-  const response = await realApiProvider.requestWorkspaceConversation('confirm-publication', { token })
+export async function confirmWorkspacePublication(token: string, expectedScope: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('confirm-publication', { token }, undefined, { expectedScope })
   return (await response.json()).data as { task_ref: string; status: string }
 }
 
-export async function uploadWorkspaceCat(file: Blob, signal: AbortSignal) {
-  const response = await realApiProvider.requestWorkspaceConversation('cat-attachment', file, signal)
+export async function uploadWorkspaceCat(file: Blob, signal: AbortSignal, expectedScope: string) {
+  const response = await realApiProvider.requestWorkspaceConversation('cat-attachment', file, signal, { expectedScope })
   return (await response.json()).data as { ref: string }
 }
 
-export async function previewWorkspaceDocument(file: Blob, kind: 'pdf' | 'docx', signal: AbortSignal) {
-  const response = await realApiProvider.requestWorkspaceConversation(`document-preview/${kind}`, file, signal)
+export async function previewWorkspaceDocument(file: Blob, kind: 'pdf' | 'docx', signal: AbortSignal, expectedScope: string) {
+  const response = await realApiProvider.requestWorkspaceConversation(`document-preview/${kind}`, file, signal, { expectedScope })
   return (await response.json()).data as { text: string; characters: number }
 }
 
-export async function previewWorkspaceFormula(image: Blob, signal: AbortSignal): Promise<string> {
-  const response = await realApiProvider.requestWorkspaceConversation('formula-preview', image, signal)
+export async function previewWorkspaceFormula(image: Blob, signal: AbortSignal, expectedScope: string): Promise<string> {
+  const response = await realApiProvider.requestWorkspaceConversation('formula-preview', image, signal, { expectedScope })
   const data = (await response.json()).data
   if (typeof data?.text !== 'string' || !data.text.trim() || data.text.length > 700) throw new Error('公式识别结果无法读取')
   return data.text
@@ -230,15 +233,17 @@ export async function readWorkspaceFeedbackGuide(
   return data
 }
 
-export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve') {
+export async function updateWorkspaceCat(draftRef: string, action: 'save' | 'approve', expectedScope: string) {
   const response = await realApiProvider.requestWorkspaceConversation(
-    action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef },
+    action === 'save' ? 'save-cat-draft' : 'approve-cat-draft', { draft_ref: draftRef }, undefined, { expectedScope },
   )
   return (await response.json()).data as CatDraft
 }
 
-export async function previewWorkspaceCatHandoff(ref: string, runId: string) {
-  const response = await realApiProvider.requestWorkspaceConversation('preview-cat-handoff', { handoff_ref: ref, run_id: runId })
+export async function previewWorkspaceCatHandoff(ref: string, runId: string, expectedScope: string) {
+  const response = await realApiProvider.requestWorkspaceConversation(
+    'preview-cat-handoff', { handoff_ref: ref, run_id: runId }, undefined, { expectedScope },
+  )
   return (await response.json()).data as TaskPublicationPreview
 }
 
@@ -247,6 +252,7 @@ export async function sendWorkspaceTurn(
   attachment: WorkspaceAttachment | undefined,
   onEvent: (event: WorkspaceEvent) => void,
   signal: AbortSignal,
+  expectedScope: string,
   catAttachmentRef?: string,
   tableSummary?: WorkspaceTableSummary,
   replacesRunId?: string,
@@ -258,7 +264,7 @@ export async function sendWorkspaceTurn(
     ...(tableSummary ? { table_summary: tableSummary } : {}),
     ...(replacesRunId ? { replaces_run_id: replacesRunId } : {}),
     ...(catSourceRunId ? { cat_source_run_id: catSourceRunId } : {}),
-  }, signal)
+  }, signal, { expectedScope })
   if (!response.body) throw new Error('连接未返回会话数据')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()

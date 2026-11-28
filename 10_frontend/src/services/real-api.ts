@@ -89,6 +89,7 @@ type UnknownRecord = Record<string, unknown>
 
 const SYNTHETIC_FIXTURE_LABEL = '真实接口，合成数据，仅用于工程验证'
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/'
+const workspaceScopeHeader = 'X-PsyNova-Workspace-Scope'
 const apiClient = createClient(createConfig({
   baseUrl: apiBaseUrl,
   credentials: 'include',
@@ -119,6 +120,9 @@ const requestError = (value: unknown): RealApiError => {
   if (isRecord(value)) {
      const code = typeof value.code === 'string' ? value.code : 'API_ERROR'
      const detail = typeof value.detail === 'string' ? value.detail : '接口请求没有完成。'
+     if (code === 'workflow_conflict' && detail === 'workspace context changed') {
+       return new RealApiError('WORKSPACE_SCOPE_CHANGED', '学校或角色已切换，请刷新工作区')
+     }
      const message = Array.isArray(value.errors) ? '请求参数没有通过校验。' : detail
      return new RealApiError(code, message, Boolean(value.retryable))
   }
@@ -1448,6 +1452,7 @@ export class RealApiProvider implements FrontendApi {
   async requestWorkspaceAgent<T>(
     request: { operation: 'snapshot' } | { operation: 'run'; text: string } | { operation: 'confirm'; token: string },
     signal?: AbortSignal,
+    expectedScope?: string,
   ): Promise<ApiEnvelope<T>> {
     const operation = request.operation
     const body = operation === 'run' ? { text: request.text }
@@ -1457,7 +1462,11 @@ export class RealApiProvider implements FrontendApi {
       method: body ? 'POST' : 'GET',
       url: '/api/v1/workspace-agent/' + operation,
       signal,
-      ...(body ? { body, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken } } : {}),
+      ...(body ? { body } : {}),
+      headers: {
+        ...(expectedScope ? { [workspaceScopeHeader]: encodeURIComponent(expectedScope) } : {}),
+        ...(body ? { 'Content-Type': 'application/json', 'X-CSRF-Token': this.csrfToken } : {}),
+      },
     }))
   }
 
@@ -1468,7 +1477,7 @@ export class RealApiProvider implements FrontendApi {
       | `feedback-guide/${string}` | `feedback-measurement/${string}`,
     body?: object,
     signal?: AbortSignal,
-    historyVersion?: string,
+    { historyVersion, expectedScope }: { historyVersion?: string; expectedScope?: string } = {},
   ): Promise<Response> {
     const apiOrigin = new URL(apiBaseUrl, window.location.href)
     const base = new URL('/api/v1/workspace-agent/conversation', apiOrigin)
@@ -1479,6 +1488,7 @@ export class RealApiProvider implements FrontendApi {
     const readOnly = operation === 'history' || operation.startsWith('task-feedback/')
       || operation.startsWith('feedback-measurement/')
     const headers = new Headers({ Accept: operation === 'turn' ? 'application/x-ndjson' : 'application/json' })
+    if (expectedScope) headers.set(workspaceScopeHeader, encodeURIComponent(expectedScope))
     if (!readOnly) headers.set('X-CSRF-Token', await this.ensureCsrfToken())
     const binaryPreview = operation === 'formula-preview' || operation.startsWith('document-preview/')
     if (body) headers.set('Content-Type', catCsv ? 'text/csv' : binaryPreview ? 'application/octet-stream' : 'application/json')
@@ -1489,6 +1499,8 @@ export class RealApiProvider implements FrontendApi {
     })
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}))
+      const failure = requestError(problem)
+      if (failure.code === 'WORKSPACE_SCOPE_CHANGED') throw failure
       if (catCsv && typeof problem.detail === 'string') {
         const record = /^CAT CSV record ([1-9][0-9]{0,2}) is invalid$/.exec(problem.detail)
         if (record) {

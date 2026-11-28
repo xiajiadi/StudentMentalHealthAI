@@ -81,8 +81,11 @@ from smhai_backend.domains.school_support.router import router as school_support
 from smhai_backend.domains.school_tasks.router import router as school_tasks_router
 from smhai_backend.domains.support.router import router as support_router
 from smhai_backend.domains.teacher.router import router as teacher_router
+from smhai_backend.domains.workspace_agent import WORKSPACE_SCOPE_HEADER
 from smhai_backend.domains.workspace_agent import router as workspace_agent_router
-from smhai_backend.domains.workspace_agent_conversation import router as workspace_conversation_router
+from smhai_backend.domains.workspace_agent_conversation import (
+    router as workspace_conversation_router,
+)
 from smhai_backend.domains.workspace_agent_history import WorkspaceHistory
 from smhai_backend.lifespan import make_lifespan
 
@@ -127,6 +130,7 @@ def create_app(
             "X-Request-ID",
             "X-Trace-ID",
             "Idempotency-Key",
+            WORKSPACE_SCOPE_HEADER,
         ],
     )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)

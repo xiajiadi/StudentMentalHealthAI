@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import re
 from datetime import UTC, datetime
 from typing import Literal
+from urllib.parse import unquote
 from uuid import uuid4
 
 from database_layer.provenance import is_public_demo_school_ref
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from smhai_backend.core.config import school_csrf_secret_bytes
@@ -29,7 +31,26 @@ from smhai_backend.domains.school_tasks.schemas import (
 
 from .workspace_agent_history import workspace_owner
 
-router = APIRouter(prefix="/workspace-agent", tags=["workspace-agent"])
+WORKSPACE_SCOPE_HEADER = "X-PsyNova-Workspace-Scope"
+
+
+async def check_workspace_scope(request: Request, actor: CurrentActor) -> None:
+    """Reject stale browser views without using their scope as an authorization grant."""
+    supplied = request.headers.getlist(WORKSPACE_SCOPE_HEADER)
+    if not supplied:
+        return
+    role = "school_admin" if actor.role == BackendRole.ADMIN else actor.role.value.lower()
+    expected = json.dumps(
+        [actor.user_id, actor.school_ref, role], ensure_ascii=False, separators=(",", ":")
+    )
+    if len(supplied) != 1 or len(supplied[0]) > 1024 or unquote(supplied[0]) != expected:
+        raise error(ErrorCode.WORKFLOW_CONFLICT, detail="workspace context changed")
+
+
+router = APIRouter(
+    prefix="/workspace-agent", tags=["workspace-agent"],
+    dependencies=[Depends(check_workspace_scope)],
+)
 _ROLE_TO_TOOL = {
     BackendRole.STUDENT: "student_tasks",
     BackendRole.TEACHER: "class_progress",
